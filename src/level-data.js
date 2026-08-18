@@ -39,7 +39,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-01',
     name: '露珠初遇',
     rule: '经典静止棋盘，先熟悉两次转弯的连线规则',
-    board: { rows: 6, cols: 8 },
+    board: { rows: 8, cols: 10 },
     tileTypes: 10,
     limits: { hints: 3, shuffles: 2, magic: 1 },
     stars: [star('complete'), star('timeLeft', 45), star('noHint')]
@@ -49,7 +49,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-02',
     name: '露珠下坠',
     rule: '每次消除后，各列萌宠向下补位',
-    board: { rows: 6, cols: 8 },
+    board: { rows: 8, cols: 10 },
     movement: ['down'],
     tileTypes: 10,
     stars: [star('complete'), star('timeLeft', 40), star('maxShuffles', 1)]
@@ -59,7 +59,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-03',
     name: '晨风上浮',
     rule: '每次消除后，各列萌宠向上补位',
-    board: { rows: 6, cols: 8 },
+    board: { rows: 8, cols: 10 },
     movement: ['up'],
     tileTypes: 11,
     stars: [star('complete'), star('noPowerup'), star('noHint')]
@@ -69,7 +69,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-04',
     name: '叶径左行',
     rule: '每次消除后，萌宠向左侧收拢',
-    board: { rows: 7, cols: 8 },
+    board: { rows: 8, cols: 10 },
     movement: ['left'],
     tileTypes: 12,
     stars: [star('complete'), star('timeLeft', 35), star('noPowerup')]
@@ -79,7 +79,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-05',
     name: '露林小挑战',
     rule: '上下两侧的萌宠向棋盘边缘扩散，在变化中找到高效路线',
-    board: { rows: 8, cols: 8 },
+    board: { rows: 8, cols: 10 },
     movement: ['vertical-out'],
     tileTypes: 14,
     limits: { hints: 2, shuffles: 1, magic: 0, timeBoosts: 0 },
@@ -90,7 +90,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-06',
     name: '花径右行',
     rule: '每次消除后，萌宠向右侧收拢',
-    board: { rows: 7, cols: 8 },
+    board: { rows: 8, cols: 10 },
     movement: ['right'],
     tileTypes: 12,
     stars: [star('complete'), star('timeLeft', 35), star('noHint')]
@@ -100,7 +100,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-07',
     name: '花心聚拢',
     rule: '左右两侧的萌宠向棋盘中央聚拢',
-    board: { rows: 8, cols: 8 },
+    board: { rows: 8, cols: 10 },
     movement: ['horizontal-in'],
     tileTypes: 13,
     stars: [star('complete'), star('maxShuffles', 1), star('noPowerup')]
@@ -142,9 +142,9 @@ export const CURATED_LEVELS = Object.freeze([
     name: '初霜花径',
     rule: '花瓣形缺口改变可通行区域；先破霜晶，再次连线才能消除',
     board: {
-      rows: 6,
-      cols: 8,
-      mask: cells([[0, 0], [0, 7], [5, 0], [5, 7]])
+      rows: 8,
+      cols: 10,
+      mask: cells([[0, 0], [0, 9], [7, 0], [7, 9]])
     },
     tileTypes: 13,
     obstacles: { ice: ice([[2, 3], [2, 6], [5, 3], [5, 6]]) },
@@ -155,7 +155,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-12',
     name: '双层霜心',
     rule: '双层霜晶需要两次有效连线才能完全击碎',
-    board: { rows: 6, cols: 8 },
+    board: { rows: 8, cols: 10 },
     tileTypes: 13,
     obstacles: { ice: ice([[2, 4], [2, 5], [5, 4], [5, 5]], 2) },
     stars: [star('complete'), star('clearIce', 8), star('noPowerup')]
@@ -165,7 +165,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-13',
     name: '岩门初现',
     rule: '固定岩障会截断路径，利用棋盘外沿绕行',
-    board: { rows: 7, cols: 8 },
+    board: { rows: 8, cols: 10 },
     tileTypes: 14,
     obstacles: { stones: stones([[2, 4], [2, 5], [5, 4], [5, 5]]) },
     stars: [star('complete'), star('maxShuffles', 1), star('noHint')]
@@ -175,7 +175,7 @@ export const CURATED_LEVELS = Object.freeze([
     seed: 'island-1-level-14',
     name: '对称岩廊',
     rule: '对称岩障形成狭长通道，先清理外围萌宠',
-    board: { rows: 7, cols: 8 },
+    board: { rows: 8, cols: 10 },
     tileTypes: 15,
     obstacles: { stones: stones([[2, 3], [2, 6], [3, 3], [3, 6], [4, 3], [4, 6]]) },
     stars: [star('complete'), star('timeLeft', 30), star('maxShuffles', 0)]
