@@ -1,55 +1,71 @@
 import {
   BLOCKED_TILE,
   MATCH_TIME_BONUS,
-  MAX_BOMBS,
-  MAX_HINTS,
-  MAX_SHUFFLES,
-  MAX_TIME_BOOSTS,
   START_TIME
 } from './constants.js';
 import { createBoard, createBoardWithObstacles, ensureSolvable, reshuffleBoard, shuffleArray } from './board.js';
 import { applyBoardMovement } from './board-movement.js';
 import { MAX_LEVELS, getLevelConfig, getNextMovementLabel, resolveMovement } from './levels.js';
+import { isGoalComplete, isStarConditionMet } from './objectives.js';
 import { findAvailableMove, findPath } from './pathfinding.js';
+import { createSeededRandom } from './random.js';
 
 export class GameEngine {
   constructor(options = {}) {
-    this.random = options.random ?? Math.random;
-    this.rows = options.rows;
-    this.cols = options.cols;
-    this.tileTypes = options.tileTypes;
-    this.startTime = options.startTime ?? START_TIME;
+    this.randomOverride = options.random ?? null;
+    this.rowsOverride = options.rows;
+    this.colsOverride = options.cols;
+    this.tileTypesOverride = options.tileTypes;
+    this.startTimeOverride = options.startTime;
     this.reset(1);
   }
 
   reset(level = 1) {
     this.levelConfig = getLevelConfig(level);
+    this.random = this.randomOverride ?? createSeededRandom(this.levelConfig.seed);
     this.level = this.levelConfig.id;
+    this.rows = this.rowsOverride ?? this.levelConfig.board.rows;
+    this.cols = this.colsOverride ?? this.levelConfig.board.cols;
     this.movementStep = 0;
     this.score = 0;
-    this.timeLeft = this.startTime;
+    this.timeLeft = this.startTimeOverride ?? this.levelConfig.timeLimit ?? START_TIME;
     this.totalTime = this.timeLeft;
-    this.hintsLeft = MAX_HINTS;
-    this.shufflesLeft = MAX_SHUFFLES;
+    this.hintsLeft = this.levelConfig.limits.hints;
+    this.hintsUsed = 0;
+    this.shufflesLeft = this.levelConfig.limits.shuffles;
     this.shufflesUsed = 0;
+    this.powerupsUsed = 0;
     this.lastShuffleGeometryRecovered = false;
     this.timerFrozenTicks = 0;
     this.captainPairsCleared = 0;
-    this.powerups = { magic: 2, time: MAX_TIME_BOOSTS, bomb: MAX_BOMBS };
-    this.applyIslandReward();
+    this.shinyPairsCleared = 0;
+    this.iceBrokenCount = 0;
+    this.powerups = {
+      magic: this.levelConfig.limits.magic,
+      time: this.levelConfig.limits.timeBoosts,
+      bomb: this.levelConfig.limits.bombs
+    };
     this.selected = null;
     this.state = 'playing';
-    this.activeTileTypes = this.tileTypes ?? this.levelConfig.tileTypes;
-    this.blockedPositions = this.createBlockedPositions(this.levelConfig.stoneCount);
+    this.activeTileTypes = this.tileTypesOverride ?? this.levelConfig.tileTypes;
+    this.blockedPositions = [
+      ...(this.levelConfig.board.mask ?? []),
+      ...this.levelConfig.obstacles.stones
+    ].map((position) => ({ ...position }));
     this.board = this.blockedPositions.length
       ? createBoardWithObstacles(this.rows, this.cols, this.activeTileTypes, this.blockedPositions, this.random)
       : createBoard(this.rows, this.cols, this.activeTileTypes, this.random);
     this.iceBoard = this.createIceBoard();
-    this.assignIce(this.levelConfig.iceCount);
+    this.assignIce(this.levelConfig.obstacles.ice);
     this.shinyBoard = this.createShinyBoard();
     this.shinyNeedsRefresh = false;
-    this.assignShinyPairs(this.levelConfig.isReward ? 3 : 1 + Math.floor(this.random() * 2));
+    this.assignShinyPairs(this.levelConfig.shinyPairs ?? 1);
     return this.snapshot();
+  }
+
+  clearSelection() {
+    this.selected = null;
+    return true;
   }
 
   select(position) {
@@ -84,12 +100,14 @@ export class GameEngine {
       iceHits.forEach((position) => {
         this.iceBoard[position.row][position.col] -= 1;
       });
+      this.iceBrokenCount += iceHits.length;
       this.selected = null;
       const scoreAdded = iceHits.length * 40;
       this.score += scoreAdded;
+      const won = this.finishIfGoalsComplete();
       return {
         type: 'ice-break', source, from, to, path,
-        iceHits, scoreAdded, timeAdded: 0, won: false,
+        iceHits, scoreAdded, timeAdded: 0, won,
         movement: 'static', autoShuffled: false
       };
     }
@@ -98,7 +116,10 @@ export class GameEngine {
     this.board[from.row][from.col] = null;
     this.board[to.row][to.col] = null;
     this.clearShinyPositions([from, to]);
-    if (shiny) this.shinyPairsRemaining -= 1;
+    if (shiny) {
+      this.shinyPairsRemaining = Math.max(0, this.shinyPairsRemaining - 1);
+      this.shinyPairsCleared += 1;
+    }
     else if (shinyTouched > 0) this.shinyNeedsRefresh = true;
     this.selected = null;
     const captainAssist = pairType === this.levelConfig.captainType;
@@ -110,9 +131,7 @@ export class GameEngine {
     this.score += scoreAdded;
     if (captainAssist) this.captainPairsCleared += 1;
     const common = { type: 'match', source, from, to, path, shiny, captainAssist, captainSkill, scoreAdded, timeAdded };
-    if (this.remaining === 0) {
-      this.state = 'won';
-      this.score += this.timeLeft * 10;
+    if (this.finishIfGoalsComplete()) {
       return { ...common, won: true, autoShuffled: false };
     }
 
@@ -138,15 +157,15 @@ export class GameEngine {
     const move = findAvailableMove(this.board);
     if (!move) return null;
     this.hintsLeft -= 1;
+    this.hintsUsed += 1;
     return move;
   }
 
   shuffle() {
     if (this.state !== 'playing' || this.shufflesLeft <= 0) return false;
-    const shuffled = reshuffleBoard(this.board, this.random);
+    const shuffled = reshuffleBoard(this.board, this.random, this.activeIcePositions());
     this.board = shuffled.board;
     this.lastShuffleGeometryRecovered = shuffled.geometryRecovered;
-    if (shuffled.geometryRecovered) this.realignIceToBoard();
     this.assignShinyPairs(this.shinyPairsRemaining);
     this.selected = null;
     this.shufflesLeft -= 1;
@@ -167,20 +186,27 @@ export class GameEngine {
     if (!partner) return null;
 
     this.powerups.magic -= 1;
+    this.powerupsUsed += 1;
     this.selected = null;
     const shiny = this.isShinyPair(position, partner);
     const shinyTouched = this.countShinyPositions([position, partner]);
+    this.iceBrokenCount += (this.iceBoard[position.row][position.col] ?? 0)
+      + (this.iceBoard[partner.row][partner.col] ?? 0);
     this.board[position.row][position.col] = null;
     this.board[partner.row][partner.col] = null;
     this.iceBoard[position.row][position.col] = null;
     this.iceBoard[partner.row][partner.col] = null;
     this.clearShinyPositions([position, partner]);
-    if (shiny) this.shinyPairsRemaining -= 1;
+    if (shiny) {
+      this.shinyPairsRemaining = Math.max(0, this.shinyPairsRemaining - 1);
+      this.shinyPairsCleared += 1;
+    }
     else if (shinyTouched > 0) this.shinyNeedsRefresh = true;
+    if (type === this.levelConfig.captainType) this.captainPairsCleared += 1;
     const timeAdded = this.addMatchTime(1);
     const scoreAdded = 180 * (shiny ? 2 : 1);
     this.score += scoreAdded;
-    const won = this.finishIfEmpty();
+    const won = this.finishIfGoalsComplete();
     if (won) return { type: 'magic', from: position, to: partner, won, autoShuffled: false, timeAdded, shiny, scoreAdded };
     const settled = this.settleAfterRemoval();
     return {
@@ -200,6 +226,7 @@ export class GameEngine {
   useTimeBoost(seconds = 15) {
     if (this.state !== 'playing' || this.powerups.time <= 0) return null;
     this.powerups.time -= 1;
+    this.powerupsUsed += 1;
     this.timeLeft += seconds;
     this.totalTime = Math.max(this.totalTime, this.timeLeft);
     return { type: 'time', seconds };
@@ -223,20 +250,28 @@ export class GameEngine {
     if (!matches.length) return null;
 
     this.powerups.bomb -= 1;
+    this.powerupsUsed += 1;
     this.selected = null;
+    const pairTypes = matches.map(([from]) => this.board[from.row][from.col]);
     const shinyMatches = matches.filter(([from, to]) => this.isShinyPair(from, to)).length;
     const shinyTouched = this.countShinyPositions(matches.flat());
+    this.iceBrokenCount += matches.flat().reduce(
+      (total, position) => total + (this.iceBoard[position.row][position.col] ?? 0),
+      0
+    );
     matches.flat().forEach((position) => {
       this.board[position.row][position.col] = null;
       this.iceBoard[position.row][position.col] = null;
     });
     this.clearShinyPositions(matches.flat());
-    this.shinyPairsRemaining -= shinyMatches;
+    this.shinyPairsRemaining = Math.max(0, this.shinyPairsRemaining - shinyMatches);
+    this.shinyPairsCleared += shinyMatches;
+    this.captainPairsCleared += pairTypes.filter((type) => type === this.levelConfig.captainType).length;
     if (shinyTouched !== shinyMatches * 2) this.shinyNeedsRefresh = true;
     const timeAdded = this.addMatchTime(matches.length);
     const scoreAdded = matches.length * 140 + shinyMatches * 140;
     this.score += scoreAdded;
-    const won = this.finishIfEmpty();
+    const won = this.finishIfGoalsComplete();
     if (won) return { type: 'bomb', matches, won, autoShuffled: false, timeAdded, shinyMatches, scoreAdded };
     const settled = this.settleAfterRemoval();
     return {
@@ -300,16 +335,6 @@ export class GameEngine {
     return result;
   }
 
-  applyIslandReward() {
-    if (!this.levelConfig.rewardActive) return;
-    const reward = this.levelConfig.islandReward;
-    if (reward.kind === 'hint') this.hintsLeft += reward.value;
-    if (reward.kind === 'shuffle') this.shufflesLeft += reward.value;
-    if (reward.kind === 'magic') this.powerups.magic += reward.value;
-    if (reward.kind === 'time') this.powerups.time += reward.value;
-    if (reward.kind === 'bomb') this.powerups.bomb += reward.value;
-  }
-
   createShinyBoard() {
     return this.board.map((row) => row.map((tile) => tile == null || tile === BLOCKED_TILE ? null : 0));
   }
@@ -318,43 +343,18 @@ export class GameEngine {
     return this.board.map((row) => row.map((tile) => tile == null || tile === BLOCKED_TILE ? null : 0));
   }
 
-  realignIceToBoard() {
-    const layers = this.iceBoard.flat().filter((value) => value > 0);
-    this.iceBoard = this.createIceBoard();
-    if (!layers.length) return;
-    const positions = [];
-    this.board.forEach((row, rowIndex) => row.forEach((tile, colIndex) => {
-      if (tile != null && tile !== BLOCKED_TILE) positions.push({ row: rowIndex, col: colIndex });
-    }));
-    shuffleArray(positions, this.random).slice(0, layers.length).forEach((position, index) => {
-      this.iceBoard[position.row][position.col] = layers[index];
+  assignIce(specs) {
+    specs.forEach(({ row, col, layers }) => {
+      if (this.iceBoard[row]?.[col] != null) this.iceBoard[row][col] = layers;
     });
   }
 
-  assignIce(count) {
+  activeIcePositions() {
     const positions = [];
-    this.board.forEach((row, rowIndex) => row.forEach((tile, colIndex) => {
-      if (tile != null && tile !== BLOCKED_TILE) positions.push({ row: rowIndex, col: colIndex });
+    this.iceBoard.forEach((row, rowIndex) => row.forEach((layers, colIndex) => {
+      if (layers > 0) positions.push({ row: rowIndex, col: colIndex });
     }));
-    shuffleArray(positions, this.random).slice(0, count).forEach((position) => {
-      this.iceBoard[position.row][position.col] = 1;
-    });
-  }
-
-  createBlockedPositions(count) {
-    if (!count) return [];
-    const rows = this.rows ?? 8;
-    const cols = this.cols ?? 10;
-    const candidates = [
-      [2, 4], [2, 5], [5, 4], [5, 5],
-      [3, 3], [3, 6], [4, 3], [4, 6],
-      [1, 4], [1, 5], [6, 4], [6, 5]
-    ].map(([row, col]) => ({ row: Math.min(rows - 1, row), col: Math.min(cols - 1, col) }));
-    const offset = this.level % candidates.length;
-    const unique = [...candidates.slice(offset), ...candidates.slice(0, offset)]
-      .filter((position, index, items) => items.findIndex((item) => item.row === position.row && item.col === position.col) === index);
-    const available = Math.min(count, rows * cols - 2, unique.length);
-    return unique.slice(0, available - (available % 2));
+    return positions;
   }
 
   assignShinyPairs(pairCount) {
@@ -400,11 +400,9 @@ export class GameEngine {
     const movement = resolveMovement(this.levelConfig, this.movementStep);
     this.board = applyBoardMovement(this.board, movement);
     this.shinyBoard = applyBoardMovement(this.shinyBoard, movement);
-    this.iceBoard = applyBoardMovement(this.iceBoard, movement);
     this.movementStep += 1;
-    const solvable = ensureSolvable(this.board, this.random);
+    const solvable = ensureSolvable(this.board, this.random, 120, this.activeIcePositions());
     this.board = solvable.board;
-    if (solvable.geometryRecovered) this.realignIceToBoard();
     if (solvable.reshuffled || this.shinyNeedsRefresh) this.assignShinyPairs(this.shinyPairsRemaining);
     return {
       movement,
@@ -413,8 +411,9 @@ export class GameEngine {
     };
   }
 
-  finishIfEmpty() {
-    if (this.remaining !== 0) return false;
+  finishIfGoalsComplete() {
+    if (!this.levelConfig.goals.every((goal) => isGoalComplete(goal, this))) return false;
+    if (this.state === 'won') return true;
     this.state = 'won';
     this.score += this.timeLeft * 10;
     return true;
@@ -448,10 +447,21 @@ export class GameEngine {
   }
 
   get starsEarned() {
-    if (this.state !== 'won') return 0;
-    return 1
-      + Number(this.timeLeft >= this.levelConfig.starTime)
-      + Number(this.shufflesUsed <= 2);
+    return this.levelConfig.stars.filter((condition) => isStarConditionMet(condition, this)).length;
+  }
+
+  get starResults() {
+    return this.levelConfig.stars.map((condition) => ({
+      condition: { ...condition },
+      earned: isStarConditionMet(condition, this)
+    }));
+  }
+
+  get goalResults() {
+    return this.levelConfig.goals.map((goal) => ({
+      goal: { ...goal },
+      complete: isGoalComplete(goal, this)
+    }));
   }
 
   snapshot() {
@@ -471,12 +481,19 @@ export class GameEngine {
       hintsLeft: this.hintsLeft,
       shufflesLeft: this.shufflesLeft,
       shufflesUsed: this.shufflesUsed,
+      hintsUsed: this.hintsUsed,
+      powerupsUsed: this.powerupsUsed,
       lastShuffleGeometryRecovered: this.lastShuffleGeometryRecovered,
       timerFrozenTicks: this.timerFrozenTicks,
       shinyPairsRemaining: this.shinyPairsRemaining,
+      shinyPairsCleared: this.shinyPairsCleared,
+      iceBrokenCount: this.iceBrokenCount,
       captainPairsCleared: this.captainPairsCleared,
-      obstaclesRemaining: this.iceBoard.flat().filter((value) => value > 0).length + this.blockedPositions.length,
+      obstaclesRemaining: this.iceBoard.flat().reduce((total, value) => total + Math.max(0, value ?? 0), 0)
+        + this.blockedPositions.length,
       starsEarned: this.starsEarned,
+      starResults: this.starResults,
+      goalResults: this.goalResults,
       powerups: { ...this.powerups },
       selected: this.selected,
       remaining: this.remaining,

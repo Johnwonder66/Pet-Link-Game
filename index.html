@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#edf6f5" />
-    <meta name="description" content="50座主题萌宠岛、1000关闯关与无尽模式的经典连连看游戏。" />
+    <meta name="description" content="20个精心设计关卡、原创萌宠与无尽模式的经典连连看游戏。" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="绒光连连看" />
@@ -23,7 +23,7 @@
           <div>
             <div class="brand-title-row">
               <h1>绒光萌宠连连看</h1>
-              <small id="game-version" class="game-version">v3.2.0</small>
+              <small id="game-version" class="game-version">v3.3.0</small>
             </div>
             <p>让走散的萌宠重新产生心光共鸣</p>
           </div>
@@ -36,12 +36,12 @@
           </div>
           <div class="stat">
             <span class="stat-label">关卡</span>
-            <strong id="level">1 / 1000</strong>
+            <strong id="level">1 / 20</strong>
           </div>
           <div class="timer-stat">
             <div class="timer-copy">
               <span class="stat-label">剩余时间</span>
-              <strong id="timer">03:00</strong>
+              <strong id="timer">02:30</strong>
             </div>
             <div class="timer-track" aria-hidden="true">
               <span id="timer-bar"></span>
@@ -68,15 +68,15 @@
             </div>
             <div class="star-missions" aria-label="本关三星任务">
               <span id="mission-clear">☆ 通关</span>
-              <span id="mission-time">☆ ≥120秒</span>
-              <span id="mission-shuffle">☆ 洗牌≤2</span>
+              <span id="mission-time">☆ 剩余≥45秒</span>
+              <span id="mission-shuffle">☆ 不使用提示</span>
             </div>
             <div id="captain-card" class="captain-card" aria-label="本岛萌宠队长">
               <span id="captain-avatar" class="captain-avatar" aria-hidden="true"></span>
               <span><small>本岛队长</small><strong id="captain-name">焰耳狐</strong></span>
             </div>
             <div id="level-progress" class="level-progress" aria-label="当前岛屿进度"></div>
-            <button id="map-button" class="map-button" type="button">岛屿地图 <b id="map-progress">1/1000</b></button>
+            <button id="map-button" class="map-button" type="button">岛屿地图 <b id="map-progress">1/20</b></button>
           </div>
 
           <div id="board" class="board" role="grid" aria-label="连连看棋盘">
@@ -102,13 +102,13 @@
             <span class="control-icon coral" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M8.3 14.7A7 7 0 1 1 15.7 14.7c-.9.8-1.3 1.6-1.4 2.3h-4.6c-.1-.7-.5-1.5-1.4-2.3Z"/></svg>
             </span>
-            <span><strong>提示</strong><small id="hint-count">追光萤 · 10 次</small></span>
+            <span><strong>提示</strong><small id="hint-count">追光萤 · 3 次</small></span>
           </button>
           <button id="shuffle-button" class="control-button" type="button">
             <span class="control-icon mint" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20l5.5-5.5M21 3l-7 7M15 14l6 6M16 20h5v-5M4 4l5.5 5.5"/></svg>
             </span>
-            <span><strong>洗牌</strong><small id="shuffle-count">岛风铃 · 10 次</small></span>
+            <span><strong>洗牌</strong><small id="shuffle-count">岛风铃 · 2 次</small></span>
           </button>
           <button id="pause-button" class="control-button" type="button">
             <span class="control-icon amber" aria-hidden="true">
@@ -120,7 +120,7 @@
             <span class="control-icon blue" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 4v6h6M5.2 15A8 8 0 1 0 6 7.2L4 10"/></svg>
             </span>
-            <span><strong>重开一局</strong><small>重新随机生成棋盘</small></span>
+            <span><strong>重开一局</strong><small>恢复本关初始棋盘</small></span>
           </button>
 
           <section class="powerups" aria-labelledby="powerups-title">
@@ -136,21 +136,21 @@
                   <svg viewBox="0 0 24 24"><path d="m4 20 9-9M14 3l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3ZM19 13l.7 2.3L22 16l-2.3.7L19 19l-.7-2.3L16 16l2.3-.7L19 13Z"/></svg>
                 </span>
                 <span><strong>心光结</strong><small>任选一只，直接重逢</small></span>
-                <b id="magic-count">2</b>
+                <b id="magic-count">1</b>
               </button>
               <button id="time-button" class="powerup-button time" type="button">
                 <span class="powerup-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 4 1.3 6 4 9-2.7 3-4 5-4 9M16 3c0 4-1.3 6-4 9 2.7 3 4 5 4 9"/></svg>
                 </span>
                 <span><strong>时砂露</strong><small>立即增加 15 秒</small></span>
-                <b id="time-count">10</b>
+                <b id="time-count">1</b>
               </button>
               <button id="bomb-button" class="powerup-button bomb" type="button">
                 <span class="powerup-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M14 6c3-3 4-2 5-5M16 4l3 3M13 7a7 7 0 1 1-4-3 7 7 0 0 1 4 3Z"/></svg>
                 </span>
                 <span><strong>绒星烟花</strong><small>一次送回 3 对</small></span>
-                <b id="bomb-count">3</b>
+                <b id="bomb-count">0</b>
               </button>
             </div>
           </section>
@@ -179,7 +179,7 @@
         <header class="collection-header">
           <div>
             <h2 id="collection-title">萌宠图鉴</h2>
-            <p id="collection-summary">已发现 0 / 20 · 获得 0 / 3000 星</p>
+            <p id="collection-summary">已发现 0 / 20 · 获得 0 / 60 星</p>
           </div>
           <button id="collection-close" type="button" aria-label="关闭萌宠图鉴">×</button>
         </header>
@@ -218,7 +218,7 @@
         <div id="map-levels" class="island-levels" aria-label="本岛关卡"></div>
         <button id="endless-button" class="endless-button" type="button" disabled>
           <strong>无尽星海</strong>
-          <span id="endless-status">通关第1000关后解锁</span>
+          <span id="endless-status">通关第20关后解锁</span>
         </button>
       </section>
     </div>

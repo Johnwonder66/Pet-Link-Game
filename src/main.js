@@ -1,4 +1,4 @@
-import { BLOCKED_TILE, COLS, GAME_VERSION, PET_PROFILES, ROWS, TILE_NAMES } from './constants.js';
+import { BLOCKED_TILE, GAME_VERSION, PET_PROFILES, TILE_NAMES } from './constants.js';
 import { GameEngine } from './engine.js';
 import {
   ENDLESS_START_LEVEL,
@@ -11,6 +11,7 @@ import {
   getLevelConfig
 } from './levels.js';
 import { placeTileInGrid } from './tile-layout.js';
+import { starConditionLabel } from './objectives.js';
 import { createProgressStore } from './progress.js';
 import { registerPWA } from './pwa.js';
 
@@ -101,9 +102,12 @@ const compactEffects = window.matchMedia('(max-width: 680px), (prefers-reduced-m
 
 function renderBoard() {
   const snapshot = engine.snapshot();
+  elements.board.style.setProperty('--board-cols', snapshot.board[0]?.length ?? 10);
+  elements.board.style.setProperty('--board-rows', snapshot.board.length || 8);
   progressStore.discover(snapshot.board.flat().filter((type) => type != null && type !== BLOCKED_TILE));
   renderCollectionSummary();
   const activeCells = new Set();
+  const maskedCells = new Set((snapshot.levelConfig.board.mask ?? []).map(({ row, col }) => `${row}-${col}`));
   snapshot.board.forEach((row, rowIndex) => row.forEach((type, colIndex) => {
     if (type == null) return;
     const cellKey = `${rowIndex}-${colIndex}`;
@@ -113,16 +117,17 @@ function renderBoard() {
       if (!tile || tile.tagName !== 'DIV') {
         tile?.remove();
         tile = document.createElement('div');
-        tile.innerHTML = '<span aria-hidden="true">◆</span>';
         elements.board.append(tile);
       }
-      tile.className = 'tile obstacle-stone';
+      const masked = maskedCells.has(cellKey);
+      tile.innerHTML = masked ? '' : '<span aria-hidden="true">◆</span>';
+      tile.className = masked ? 'tile board-mask' : 'tile obstacle-stone';
       tile.dataset.cell = cellKey;
       tile.dataset.row = rowIndex;
       tile.dataset.col = colIndex;
       placeTileInGrid(tile, rowIndex, colIndex);
-      tile.setAttribute('role', 'gridcell');
-      tile.setAttribute('aria-label', `岩障，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
+      tile.setAttribute('role', masked ? 'presentation' : 'gridcell');
+      tile.setAttribute('aria-label', masked ? '棋盘缺口' : `岩障，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
       return;
     }
     if (!tile || tile.tagName !== 'BUTTON') {
@@ -275,19 +280,30 @@ function applyIslandTheme(levelConfig) {
 }
 
 function renderMissions(snapshot) {
-  const won = snapshot.state === 'won';
-  const timeReady = snapshot.timeLeft >= snapshot.levelConfig.starTime;
-  const shuffleReady = snapshot.shufflesUsed <= 2;
-  const missions = [
-    [elements.missionClear, '通关', won, false],
-    [elements.missionTime, `≥${snapshot.levelConfig.starTime}秒`, won && timeReady, timeReady],
-    [elements.missionShuffle, '洗牌≤2', won && shuffleReady, shuffleReady]
-  ];
-  missions.forEach(([element, label, earned, eligible]) => {
+  const missionElements = [elements.missionClear, elements.missionTime, elements.missionShuffle];
+  snapshot.starResults.forEach(({ condition, earned }, index) => {
+    const element = missionElements[index];
+    const label = starConditionLabel(condition);
+    const eligible = starConditionStillPossible(condition, snapshot);
     element.textContent = `${earned ? '★' : '☆'} ${label}`;
     element.classList.toggle('earned', earned);
     element.classList.toggle('eligible', !earned && eligible);
   });
+}
+
+function starConditionStillPossible(condition, snapshot) {
+  switch (condition.type) {
+    case 'complete': return false;
+    case 'timeLeft': return snapshot.timeLeft >= condition.value;
+    case 'noHint': return snapshot.hintsUsed === 0;
+    case 'noPowerup': return snapshot.powerupsUsed === 0;
+    case 'maxShuffles': return snapshot.shufflesUsed <= condition.value;
+    case 'clearShiny': return snapshot.shinyPairsCleared >= condition.value;
+    case 'clearIce': return snapshot.iceBrokenCount >= condition.value;
+    case 'clearCaptain': return snapshot.captainPairsCleared >= condition.value;
+    case 'score': return snapshot.score >= condition.value;
+    default: return false;
+  }
 }
 
 function render() {
@@ -383,10 +399,12 @@ function markMatched(from, to) {
 
 function drawPath(path) {
   clearTimeout(pathTimer);
-  elements.pathLayer.setAttribute('viewBox', `0 0 ${COLS} ${ROWS}`);
+  const rows = engine.board.length;
+  const cols = engine.board[0]?.length ?? 0;
+  elements.pathLayer.setAttribute('viewBox', `0 0 ${cols} ${rows}`);
   const points = path.map(({ row, col }) => {
-    const x = Math.min(COLS - 0.05, Math.max(0.05, col + 0.5));
-    const y = Math.min(ROWS - 0.05, Math.max(0.05, row + 0.5));
+    const x = Math.min(cols - 0.05, Math.max(0.05, col + 0.5));
+    const y = Math.min(rows - 0.05, Math.max(0.05, row + 0.5));
     return `${x},${y}`;
   }).join(' ');
   elements.pathLayer.innerHTML = `<polyline points="${points}" />`;
@@ -441,7 +459,7 @@ elements.pauseButton.addEventListener('click', togglePause);
 elements.overlayResumeButton.addEventListener('click', togglePause);
 elements.magicButton.addEventListener('click', () => {
   activePowerup = activePowerup === 'magic' ? null : 'magic';
-  engine.selected = null;
+  engine.clearSelection();
   render();
   elements.status.textContent = activePowerup
     ? '心光结已就绪：选择任意一只萌宠，直接找到同伴'
@@ -535,6 +553,8 @@ function renderMap() {
   const start = (visibleMapIsland - 1) * LEVELS_PER_ISLAND + 1;
   const end = Math.min(STORY_LEVELS, start + LEVELS_PER_ISLAND - 1);
   const island = getIslandDefinition(visibleMapIsland);
+  const rewardLevel = Array.from({ length: end - start + 1 }, (_, index) => getLevelConfig(start + index))
+    .find((config) => config.isReward);
   const captainType = island.captainType;
   elements.mapDialog.dataset.theme = island.palette.key;
   elements.mapDialog.style.setProperty('--map-page', island.palette.page);
@@ -552,8 +572,10 @@ function renderMap() {
   elements.mapCaptainName.textContent = `${island.captainTitle}·${TILE_NAMES[captainType]}`;
   elements.mapCaptainName.title = `${island.captainSkill.name}：${island.captainSkill.description}`;
   elements.mapThemeName.textContent = island.themeName;
-  elements.mapRewardName.textContent = island.reward.name;
-  elements.mapRewardDescription.textContent = `第10关完成后：${island.reward.description}`;
+  elements.mapRewardName.textContent = rewardLevel?.reward?.name ?? '岛屿纪念章';
+  elements.mapRewardDescription.textContent = rewardLevel
+    ? `首次通关第${rewardLevel.id}关获得，不会在后续关卡重复发放`
+    : '本岛奖励将在后续版本开放';
   elements.mapPrevious.disabled = visibleMapIsland === 1;
   elements.mapNext.disabled = visibleMapIsland >= Math.ceil(STORY_LEVELS / LEVELS_PER_ISLAND);
   elements.mapLevels.replaceChildren(...Array.from({ length: end - start + 1 }, (_, index) => {
@@ -580,7 +602,7 @@ function renderMap() {
   elements.endlessButton.disabled = !progress.storyCompleted;
   elements.endlessStatus.textContent = progress.storyCompleted
     ? `最高到达无尽第 ${progress.endlessBest} 关 · 点击继续`
-    : '通关第1000关后解锁';
+    : `通关第${STORY_LEVELS}关后解锁`;
 }
 
 function openMap() {
@@ -862,14 +884,14 @@ function showEndDialog(won) {
   renderLevelProgress(engine.level);
   elements.dialogIcon.textContent = won ? (completedStory ? '🏆' : rewardUnlocked ? '✦' : engine.levelConfig.isBoss ? '★' : '✿') : '⌛';
   elements.dialogTitle.textContent = completedStory
-    ? '千关远航完成！'
+    ? '晨露岛章完成！'
     : won
       ? endless ? `无尽第 ${engine.level - STORY_LEVELS} 关完成！` : `第 ${engine.level} 关完成！`
       : '时间到';
   elements.dialogMessage.textContent = completedStory
-    ? `你完成了1000关岛屿旅程，无尽星海已经解锁！本关获得 ${stars}/3 星。`
+    ? `你完成了首批20个精心设计关卡，无尽练习已解锁！本关获得 ${stars}/3 星。`
     : rewardUnlocked
-      ? `获得“${engine.levelConfig.islandReward.name}”！${engine.levelConfig.islandReward.description}。下一关开始生效。`
+      ? `奖励关完成，获得“${engine.levelConfig.reward?.name ?? '岛屿徽章'}”！本关获得 ${stars}/3 星。`
     : won
       ? `${endless ? '继续驶向无尽星海。' : `本关获得 ${stars}/3 星。`}下一关：${nextLevel.name}。${nextLevel.rule}`
       : '差一点就成功了，再试一次吧。每关都会从03:00重新开始。';

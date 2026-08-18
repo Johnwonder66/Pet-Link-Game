@@ -56,17 +56,13 @@ function captainSkill(index) {
 }
 
 function islandReward(index) {
-  const tier = Math.floor(index / 10);
-  const value = 1 + (tier % 2);
   const theme = THEME_NAMES[index];
-  const rewards = [
-    { kind: 'hint', value: value + 1, description: `后半岛每关提示 +${value + 1}` },
-    { kind: 'shuffle', value: value + 1, description: `后半岛每关洗牌 +${value + 1}` },
-    { kind: 'magic', value, description: `后半岛每关心光结 +${value}` },
-    { kind: 'time', value, description: `后半岛每关时砂露 +${value}` },
-    { kind: 'bomb', value, description: `后半岛每关绒星烟花 +${value}` }
-  ];
-  return { name: `${theme}祝福`, ...rewards[index % rewards.length] };
+  return {
+    name: `${theme}徽章`,
+    kind: 'badge',
+    value: 1,
+    description: '首次通关本岛奖励关获得，不会在后续关卡重复发放'
+  };
 }
 
 function palette(index) {

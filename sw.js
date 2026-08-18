@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'huajian-link-game';
-const CACHE_NAME = `${CACHE_PREFIX}-v3.2.0`;
+const CACHE_NAME = `${CACHE_PREFIX}-v3.3.0-curated-levels-2`;
 const APP_SHELL = [
   './',
   './index.html',
@@ -14,11 +14,14 @@ const APP_SHELL = [
   './src/constants.js',
   './src/engine.js',
   './src/islands.js',
+  './src/level-data.js',
   './src/levels.js',
   './src/main.js',
+  './src/objectives.js',
   './src/pathfinding.js',
   './src/pwa.js',
   './src/progress.js',
+  './src/random.js',
   './src/tile-layout.js'
 ];
 

@@ -47,36 +47,40 @@ export function createBoardWithObstacles(
   return ensureSolvable(board, random).board;
 }
 
-export function reshuffleBoard(board, random = Math.random) {
+export function reshuffleBoard(board, random = Math.random, requiredPositions = []) {
   const values = board.flat().filter(isPlayableTile);
   const next = board.map((row) => row.map((value) => value === BLOCKED_TILE ? BLOCKED_TILE : null));
   placeValues(next, shuffleArray(values, random), occupiedPositions(board));
-  return ensureSolvable(next, random);
+  return ensureSolvable(next, random, 120, requiredPositions);
 }
 
-export function ensureSolvable(board, random = Math.random, maxAttempts = 120) {
+export function ensureSolvable(board, random = Math.random, maxAttempts = 120, requiredPositions = []) {
   if (board.flat().filter(isPlayableTile).length < 2) {
     return { board: board.map((row) => [...row]), reshuffled: false, geometryRecovered: false };
   }
-  if (findAvailableMove(board)) {
+  const positions = occupiedPositions(board);
+  const occupiedKeys = new Set(positions.map(positionKey));
+  const missingRequiredPosition = requiredPositions.some((position) => !occupiedKeys.has(positionKey(position)));
+  if (!missingRequiredPosition && findAvailableMove(board)) {
     return { board: board.map((row) => [...row]), reshuffled: false, geometryRecovered: false };
   }
 
   const values = board.flat().filter(isPlayableTile);
-  const positions = occupiedPositions(board);
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const candidate = board.map((row) => row.map((value) => value === BLOCKED_TILE ? BLOCKED_TILE : null));
-    placeValues(candidate, shuffleArray(values, random), positions);
-    if (findAvailableMove(candidate)) {
-      return { board: candidate, reshuffled: true, geometryRecovered: false };
+  if (!missingRequiredPosition) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = board.map((row) => row.map((value) => value === BLOCKED_TILE ? BLOCKED_TILE : null));
+      placeValues(candidate, shuffleArray(values, random), positions);
+      if (findAvailableMove(candidate)) {
+        return { board: candidate, reshuffled: true, geometryRecovered: false };
+      }
     }
+
+    const forced = forceOneMove(board, values, positions, random);
+    if (forced) return { board: forced, reshuffled: true, geometryRecovered: false };
   }
 
-  const forced = forceOneMove(board, values, positions, random);
-  if (forced) return { board: forced, reshuffled: true, geometryRecovered: false };
-
   return {
-    board: recoverGeometry(board, values, random),
+    board: recoverGeometry(board, values, random, requiredPositions),
     reshuffled: true,
     geometryRecovered: true
   };
@@ -115,7 +119,7 @@ function forceOneMove(board, values, positions, random) {
   return result;
 }
 
-function recoverGeometry(board, values, random) {
+function recoverGeometry(board, values, random, requiredPositions = []) {
   const rows = board.length;
   const cols = board[0]?.length ?? 0;
   const available = allOpenPositions(board);
@@ -146,10 +150,17 @@ function recoverGeometry(board, values, random) {
       const toKey = positionKey(to);
       reserved.delete(fromKey);
       reserved.delete(toKey);
-      const targets = candidates.filter((position) => {
+      if (requiredPositions.some((position) => reserved.has(positionKey(position)))) continue;
+      const requiredTargets = requiredPositions.filter((position) => {
         const key = positionKey(position);
-        return key !== fromKey && key !== toKey && !reserved.has(key);
+        return key !== fromKey && key !== toKey;
       });
+      const requiredKeys = new Set(requiredTargets.map(positionKey));
+      const optionalTargets = candidates.filter((position) => {
+        const key = positionKey(position);
+        return key !== fromKey && key !== toKey && !reserved.has(key) && !requiredKeys.has(key);
+      });
+      const targets = [...requiredTargets, ...optionalTargets];
       if (targets.length < remaining.length) continue;
 
       const result = emptyBoardWithBlockers(board);
