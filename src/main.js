@@ -1,12 +1,22 @@
-import { COLS, GAME_VERSION, PET_PROFILES, ROWS, TILE_NAMES } from './constants.js';
+import { BLOCKED_TILE, COLS, GAME_VERSION, PET_PROFILES, ROWS, TILE_NAMES } from './constants.js';
 import { GameEngine } from './engine.js';
-import { LEVELS, MAX_LEVELS, MOVEMENT_LABELS, getLevelConfig } from './levels.js';
+import {
+  ENDLESS_START_LEVEL,
+  LEVELS_PER_ISLAND,
+  MOVEMENT_LABELS,
+  STORY_LEVELS,
+  getIslandLevels,
+  getIslandName,
+  getIslandNumber,
+  getLevelConfig
+} from './levels.js';
 import { placeTileInGrid } from './tile-layout.js';
 import { createProgressStore } from './progress.js';
 import { registerPWA } from './pwa.js';
 
-const engine = new GameEngine();
 const progressStore = createProgressStore();
+const engine = new GameEngine();
+engine.reset(progressStore.snapshot().currentLevel);
 const elements = {
   board: document.querySelector('#board'),
   pathLayer: document.querySelector('#path-layer'),
@@ -19,6 +29,11 @@ const elements = {
   levelMode: document.querySelector('#level-mode'),
   levelRule: document.querySelector('#level-rule'),
   levelProgress: document.querySelector('#level-progress'),
+  captainCard: document.querySelector('#captain-card'),
+  captainAvatar: document.querySelector('#captain-avatar'),
+  captainName: document.querySelector('#captain-name'),
+  mapButton: document.querySelector('#map-button'),
+  mapProgress: document.querySelector('#map-progress'),
   gameVersion: document.querySelector('#game-version'),
   missionClear: document.querySelector('#mission-clear'),
   missionTime: document.querySelector('#mission-time'),
@@ -45,6 +60,17 @@ const elements = {
   collectionClose: document.querySelector('#collection-close'),
   collectionSummary: document.querySelector('#collection-summary'),
   collectionGrid: document.querySelector('#collection-grid'),
+  mapDialog: document.querySelector('#map-dialog'),
+  mapClose: document.querySelector('#map-close'),
+  mapTitle: document.querySelector('#map-title'),
+  mapSummary: document.querySelector('#map-summary'),
+  mapPrevious: document.querySelector('#map-previous'),
+  mapNext: document.querySelector('#map-next'),
+  mapCaptainAvatar: document.querySelector('#map-captain-avatar'),
+  mapCaptainName: document.querySelector('#map-captain-name'),
+  mapLevels: document.querySelector('#map-levels'),
+  endlessButton: document.querySelector('#endless-button'),
+  endlessStatus: document.querySelector('#endless-status'),
   toast: document.querySelector('#toast'),
   dialog: document.querySelector('#game-dialog'),
   dialogIcon: document.querySelector('#dialog-icon'),
@@ -63,14 +89,28 @@ let comboCount = 0;
 let lastMatchAt = 0;
 let activePowerup = null;
 let collectionResumeOnClose = false;
+let mapResumeOnClose = false;
+let visibleMapIsland = getIslandNumber(Math.min(engine.level, STORY_LEVELS));
 
 function renderBoard() {
   const snapshot = engine.snapshot();
-  progressStore.discover(snapshot.board.flat().filter((type) => type != null));
+  progressStore.discover(snapshot.board.flat().filter((type) => type != null && type !== BLOCKED_TILE));
   renderCollectionSummary();
   elements.board.querySelectorAll('.tile').forEach((tile) => tile.remove());
   snapshot.board.forEach((row, rowIndex) => row.forEach((type, colIndex) => {
     if (type == null) return;
+    if (type === BLOCKED_TILE) {
+      const stone = document.createElement('div');
+      stone.className = 'tile obstacle-stone';
+      stone.dataset.row = rowIndex;
+      stone.dataset.col = colIndex;
+      placeTileInGrid(stone, rowIndex, colIndex);
+      stone.setAttribute('role', 'gridcell');
+      stone.setAttribute('aria-label', `岩障，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
+      stone.innerHTML = '<span aria-hidden="true">◆</span>';
+      elements.board.append(stone);
+      return;
+    }
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.className = 'tile';
@@ -84,10 +124,22 @@ function renderBoard() {
     tile.dataset.type = type;
     tile.dataset.label = TILE_NAMES[type];
     const shiny = snapshot.shinyBoard[rowIndex][colIndex] === 1;
+    const frozen = snapshot.iceBoard[rowIndex][colIndex] > 0;
+    const captain = type === snapshot.levelConfig.captainType;
     tile.classList.toggle('shiny', shiny);
+    tile.classList.toggle('ice-covered', frozen);
+    tile.classList.toggle('captain-pet', captain);
     tile.dataset.shiny = String(shiny);
+    tile.dataset.ice = String(frozen);
     tile.setAttribute('role', 'gridcell');
-    tile.setAttribute('aria-label', `${shiny ? '闪光' : ''}${TILE_NAMES[type]}，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
+    tile.setAttribute('aria-label', `${frozen ? '霜晶覆盖的' : ''}${shiny ? '闪光' : ''}${captain ? '队长' : ''}${TILE_NAMES[type]}，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
+    if (frozen) {
+      const ice = document.createElement('span');
+      ice.className = 'ice-layer';
+      ice.setAttribute('aria-hidden', 'true');
+      ice.textContent = '❄';
+      tile.append(ice);
+    }
     if (snapshot.selected?.row === rowIndex && snapshot.selected?.col === colIndex) {
       tile.classList.add('selected');
       tile.setAttribute('aria-selected', 'true');
@@ -99,15 +151,22 @@ function renderBoard() {
 
 function renderStats() {
   const snapshot = engine.snapshot();
+  const progress = progressStore.snapshot();
   elements.gameVersion.textContent = `v${GAME_VERSION}`;
   elements.score.textContent = snapshot.score.toLocaleString('zh-CN');
-  elements.level.textContent = `${snapshot.level} / ${snapshot.maxLevels}`;
+  elements.level.textContent = snapshot.levelConfig.endless
+    ? `∞ ${snapshot.level - STORY_LEVELS}`
+    : `${snapshot.level} / ${STORY_LEVELS}`;
   elements.levelMode.textContent = snapshot.levelConfig.name;
   elements.levelRule.textContent = snapshot.levelConfig.movement === 'rotate'
     ? `${snapshot.activeTileTypes}种萌宠 · ${snapshot.levelConfig.rule} · 下一次：${snapshot.nextMovementLabel}`
     : `${snapshot.activeTileTypes}种萌宠 · ${snapshot.levelConfig.rule}`;
   renderLevelProgress(snapshot.level);
+  renderCaptain(snapshot);
   renderMissions(snapshot);
+  elements.mapProgress.textContent = snapshot.levelConfig.endless
+    ? `∞${snapshot.level - STORY_LEVELS}`
+    : `${progress.unlockedLevel}/${STORY_LEVELS}`;
   elements.timer.textContent = formatTime(snapshot.timeLeft);
   elements.remaining.textContent = snapshot.remaining;
   elements.hintCount.textContent = `追光萤 · ${snapshot.hintsLeft} 次`;
@@ -136,23 +195,32 @@ function renderStats() {
 
 function renderLevelProgress(activeLevel) {
   const storedStars = progressStore.snapshot().stars;
-  if (elements.levelProgress.children.length !== LEVELS.length) {
-    elements.levelProgress.replaceChildren(...LEVELS.map((level) => {
-      const dot = document.createElement('span');
-      dot.textContent = level.id;
-      dot.title = `第 ${level.id} 关：${level.name}`;
-      dot.setAttribute('aria-label', `第 ${level.id} 关，${level.name}`);
-      return dot;
-    }));
-  }
-  [...elements.levelProgress.children].forEach((dot, index) => {
-    const level = index + 1;
+  const islandLevels = activeLevel > STORY_LEVELS
+    ? Array.from({ length: 5 }, (_, index) => activeLevel - 2 + index).filter((level) => level >= ENDLESS_START_LEVEL)
+    : getIslandLevels(activeLevel);
+  const localIndex = activeLevel > STORY_LEVELS ? 2 : (activeLevel - 1) % LEVELS_PER_ISLAND;
+  const groupStart = activeLevel > STORY_LEVELS ? 0 : Math.floor(localIndex / 5) * 5;
+  const visibleLevels = activeLevel > STORY_LEVELS ? islandLevels : islandLevels.slice(groupStart, groupStart + 5);
+  elements.levelProgress.replaceChildren(...visibleLevels.map((level) => {
+    const config = getLevelConfig(level);
+    const dot = document.createElement('span');
+    dot.textContent = config.endless ? `∞${level - STORY_LEVELS}` : config.islandLevel;
+    dot.dataset.level = level;
     const stars = Number(storedStars[level] ?? 0);
     dot.classList.toggle('completed', level < activeLevel || stars > 0);
-    dot.classList.toggle('active', index + 1 === activeLevel);
-    dot.setAttribute('aria-current', index + 1 === activeLevel ? 'step' : 'false');
-    dot.title = `第 ${level} 关：${LEVELS[index].name} · 历史最高 ${stars}/3 星`;
-  });
+    dot.classList.toggle('active', level === activeLevel);
+    dot.setAttribute('aria-current', level === activeLevel ? 'step' : 'false');
+    dot.title = `${config.endless ? `无尽第 ${level - STORY_LEVELS} 关` : `第 ${level} 关`}：${config.name} · 历史最高 ${stars}/3 星`;
+    return dot;
+  }));
+}
+
+function renderCaptain(snapshot) {
+  const type = snapshot.levelConfig.captainType;
+  elements.captainAvatar.style.setProperty('--sprite-x', type % 5);
+  elements.captainAvatar.style.setProperty('--sprite-y', Math.floor(type / 5));
+  elements.captainName.textContent = `${TILE_NAMES[type]} · +2秒`;
+  elements.captainCard.title = `消除${TILE_NAMES[type]}时，队长额外增加2秒`;
 }
 
 function renderMissions(snapshot) {
@@ -187,6 +255,23 @@ function handleTileClick(event) {
   const scoreBefore = engine.score;
   const result = engine.select(position);
 
+  if (result.type === 'ice-break') {
+    locked = true;
+    resetCombo();
+    drawPath(result.path);
+    markSpecialTiles(result.iceHits, 'ice-breaking');
+    triggerMatchEffects(result, result.scoreAdded, 1);
+    showSpecialBanner('❄', '霜晶破裂', 'freeze-banner');
+    elements.status.textContent = `霜晶被击碎！再连接一次即可送回这对萌宠`;
+    renderStats();
+    window.setTimeout(() => {
+      clearPath();
+      render();
+      locked = false;
+    }, 380);
+    return;
+  }
+
   if (result.type === 'match') {
     const now = Date.now();
     comboCount = now - lastMatchAt <= 3500 ? comboCount + 1 : 1;
@@ -203,6 +288,7 @@ function handleTileClick(event) {
       ? `${comboCount} 连击！时间 +${result.timeAdded} 秒${movementText ? ` · 萌宠${movementText}` : ''}`
       : `共鸣成功，时间 +${result.timeAdded} 秒${movementText ? ` · ${movementText}` : ''}`;
     if (result.shiny) status += ' · 闪光双倍得分';
+    if (result.captainAssist) status += ' · 队长援助额外+2秒';
     if (comboReward.message) status += ` · ${comboReward.message}`;
     elements.status.textContent = status;
     renderStats();
@@ -311,21 +397,39 @@ elements.collectionDialog.addEventListener('click', (event) => {
 });
 elements.dialogSecondary.addEventListener('click', () => restart(engine.level));
 elements.dialogPrimary.addEventListener('click', () => {
-  const nextLevel = engine.state === 'won'
-    ? (engine.level === MAX_LEVELS ? 1 : engine.level + 1)
-    : engine.level;
+  const nextLevel = engine.state === 'won' ? engine.level + 1 : engine.level;
   restart(nextLevel);
+});
+elements.mapButton.addEventListener('click', openMap);
+elements.mapClose.addEventListener('click', closeMap);
+elements.mapDialog.addEventListener('click', (event) => {
+  if (event.target === elements.mapDialog) closeMap();
+});
+elements.mapPrevious.addEventListener('click', () => {
+  visibleMapIsland = Math.max(1, visibleMapIsland - 1);
+  renderMap();
+});
+elements.mapNext.addEventListener('click', () => {
+  visibleMapIsland = Math.min(Math.ceil(STORY_LEVELS / LEVELS_PER_ISLAND), visibleMapIsland + 1);
+  renderMap();
+});
+elements.endlessButton.addEventListener('click', () => {
+  const progress = progressStore.snapshot();
+  if (!progress.storyCompleted) return;
+  closeMap();
+  restart(ENDLESS_START_LEVEL + progress.endlessBest);
 });
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !elements.collectionDialog.hidden) closeCollection();
+  if (event.key === 'Escape' && !elements.mapDialog.hidden) closeMap();
 });
 
 function renderCollectionSummary() {
   const progress = progressStore.snapshot();
   const totalStars = Object.values(progress.stars).reduce((total, stars) => total + Number(stars), 0);
   elements.collectionCount.textContent = `${progress.discovered.length}/${PET_PROFILES.length}`;
-  elements.collectionSummary.textContent = `已发现 ${progress.discovered.length} / ${PET_PROFILES.length} · 获得 ${totalStars} / 30 星 · v${GAME_VERSION}`;
+  elements.collectionSummary.textContent = `已发现 ${progress.discovered.length} / ${PET_PROFILES.length} · 获得 ${totalStars} / ${STORY_LEVELS * 3} 星 · v${GAME_VERSION}`;
 }
 
 function renderCollection() {
@@ -367,13 +471,76 @@ function closeCollection() {
   elements.collectionButton.focus();
 }
 
+function renderMap() {
+  const progress = progressStore.snapshot();
+  const start = (visibleMapIsland - 1) * LEVELS_PER_ISLAND + 1;
+  const end = Math.min(STORY_LEVELS, start + LEVELS_PER_ISLAND - 1);
+  const captainType = (visibleMapIsland - 1) % PET_PROFILES.length;
+  elements.mapTitle.textContent = getIslandName(visibleMapIsland);
+  elements.mapSummary.textContent = `第 ${start}—${end} 关 · 已解锁第 ${progress.unlockedLevel} 关`;
+  elements.mapCaptainAvatar.style.setProperty('--sprite-x', captainType % 5);
+  elements.mapCaptainAvatar.style.setProperty('--sprite-y', Math.floor(captainType / 5));
+  elements.mapCaptainName.textContent = TILE_NAMES[captainType];
+  elements.mapPrevious.disabled = visibleMapIsland === 1;
+  elements.mapNext.disabled = visibleMapIsland >= Math.ceil(STORY_LEVELS / LEVELS_PER_ISLAND);
+  elements.mapLevels.replaceChildren(...Array.from({ length: end - start + 1 }, (_, index) => {
+    const level = start + index;
+    const config = getLevelConfig(level);
+    const stars = Number(progress.stars[level] ?? 0);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'island-level';
+    button.classList.toggle('current', level === engine.level);
+    button.classList.toggle('completed', stars > 0);
+    button.classList.toggle('reward', config.isReward);
+    button.classList.toggle('boss', config.isBoss);
+    button.disabled = !progressStore.canPlay(level);
+    button.innerHTML = `<strong>${config.isBoss ? '★' : config.isReward ? '✦' : config.islandLevel}</strong><small>${stars ? `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}` : config.isBoss ? '队长试炼' : config.isReward ? '奖励关' : config.name}</small>`;
+    button.setAttribute('aria-label', `第 ${level} 关，${config.name}${button.disabled ? '，尚未解锁' : ''}`);
+    button.addEventListener('click', () => {
+      if (!progressStore.canPlay(level)) return;
+      closeMap();
+      restart(level);
+    });
+    return button;
+  }));
+  elements.endlessButton.disabled = !progress.storyCompleted;
+  elements.endlessStatus.textContent = progress.storyCompleted
+    ? `最高到达无尽第 ${progress.endlessBest} 关 · 点击继续`
+    : '通关第1000关后解锁';
+}
+
+function openMap() {
+  visibleMapIsland = getIslandNumber(Math.min(engine.level, STORY_LEVELS));
+  mapResumeOnClose = engine.state === 'playing';
+  if (mapResumeOnClose) engine.pause();
+  renderMap();
+  renderStats();
+  elements.mapDialog.hidden = false;
+  elements.mapClose.focus();
+}
+
+function closeMap() {
+  elements.mapDialog.hidden = true;
+  if (mapResumeOnClose && engine.state === 'paused') engine.resume();
+  mapResumeOnClose = false;
+  renderStats();
+  elements.mapButton.focus();
+}
+
 function restart(level) {
+  if (!progressStore.canPlay(level) && level !== engine.level) {
+    showToast('先完成前面的关卡才能前往这里');
+    return;
+  }
+  progressStore.setCurrentLevel(level);
   engine.reset(level);
   locked = false;
   resetCombo();
   activePowerup = null;
   elements.dialog.hidden = true;
-  elements.status.textContent = `第 ${engine.level} 关 · ${engine.levelConfig.name}：${engine.levelConfig.rule}`;
+  const label = engine.levelConfig.endless ? `无尽第 ${engine.level - STORY_LEVELS} 关` : `第 ${engine.level} 关`;
+  elements.status.textContent = `${label} · ${engine.levelConfig.islandName} · ${engine.levelConfig.name}：${engine.levelConfig.rule}`;
   clearPath();
   render();
 }
@@ -513,11 +680,14 @@ function performComboEcho() {
   if (!result) return;
   locked = true;
   drawPath(result.path);
-  markMatched(result.from, result.to);
+  if (result.type === 'ice-break') markSpecialTiles(result.iceHits, 'ice-breaking');
+  else markMatched(result.from, result.to);
   triggerMatchEffects(result, engine.score - scoreBefore, comboCount);
   flashTimerBonus(result.timeAdded);
-  showSpecialBanner('♥', '自动重逢', 'echo-banner');
-  elements.status.textContent = `心光回响送回一对萌宠，时间 +${result.timeAdded} 秒${result.shiny ? ' · 闪光双倍得分' : ''}`;
+  showSpecialBanner(result.type === 'ice-break' ? '❄' : '♥', result.type === 'ice-break' ? '击碎霜晶' : '自动重逢', 'echo-banner');
+  elements.status.textContent = result.type === 'ice-break'
+    ? '心光回响击碎了霜晶，再连接一次即可消除'
+    : `心光回响送回一对萌宠，时间 +${result.timeAdded} 秒${result.shiny ? ' · 闪光双倍得分' : ''}`;
   renderStats();
   window.setTimeout(() => {
     clearPath();
@@ -598,10 +768,11 @@ function createPetalRain() {
 }
 
 function showEndDialog(won) {
-  const completedAll = won && engine.level === MAX_LEVELS;
-  const nextLevel = won && !completedAll ? getLevelConfig(engine.level + 1) : null;
+  const completedStory = won && engine.level === STORY_LEVELS;
+  const endless = engine.levelConfig.endless;
+  const nextLevel = won ? getLevelConfig(engine.level + 1) : null;
   const stars = won ? engine.starsEarned : 0;
-  if (won) progressStore.recordStars(engine.level, stars);
+  if (won) progressStore.recordCompletion(engine.level, stars);
   elements.dialogStars.replaceChildren(...Array.from({ length: 3 }, (_, index) => {
     const star = document.createElement('span');
     star.textContent = '★';
@@ -611,19 +782,23 @@ function showEndDialog(won) {
   elements.dialogStars.hidden = !won;
   renderCollectionSummary();
   renderLevelProgress(engine.level);
-  elements.dialogIcon.textContent = won ? (completedAll ? '🏆' : '✿') : '⌛';
-  elements.dialogTitle.textContent = completedAll
-    ? '十关全部通关！'
-    : won ? `第 ${engine.level} 关完成！` : '时间到';
-  elements.dialogMessage.textContent = completedAll
-    ? `你让绒光群岛的全部萌宠都顺利重逢了，本关获得 ${stars}/3 星。`
+  elements.dialogIcon.textContent = won ? (completedStory ? '🏆' : engine.levelConfig.isBoss ? '★' : '✿') : '⌛';
+  elements.dialogTitle.textContent = completedStory
+    ? '千关远航完成！'
     : won
-      ? `本关获得 ${stars}/3 星。下一关：${nextLevel.name}。${nextLevel.rule}`
-      : '差一点就成功了，再试一次吧。';
+      ? endless ? `无尽第 ${engine.level - STORY_LEVELS} 关完成！` : `第 ${engine.level} 关完成！`
+      : '时间到';
+  elements.dialogMessage.textContent = completedStory
+    ? `你完成了1000关岛屿旅程，无尽星海已经解锁！本关获得 ${stars}/3 星。`
+    : won
+      ? `${endless ? '继续驶向无尽星海。' : `本关获得 ${stars}/3 星。`}下一关：${nextLevel.name}。${nextLevel.rule}`
+      : '差一点就成功了，再试一次吧。每关都会从03:00重新开始。';
   elements.dialogScore.textContent = engine.score.toLocaleString('zh-CN');
-  elements.dialogPrimary.textContent = completedAll
-    ? '从第 1 关再玩'
-    : won ? `进入第 ${engine.level + 1} 关` : '再试一次';
+  elements.dialogPrimary.textContent = completedStory
+    ? '进入无尽星海'
+    : won
+      ? endless ? `继续无尽第 ${engine.level - STORY_LEVELS + 1} 关` : `进入第 ${engine.level + 1} 关`
+      : '再试一次';
   elements.dialogSecondary.textContent = '重玩本关';
   elements.dialogSecondary.hidden = !won;
   elements.dialog.hidden = false;

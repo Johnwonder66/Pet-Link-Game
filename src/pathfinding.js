@@ -11,6 +11,7 @@ export function findPath(board, from, to) {
   if (!board.length || !board[0].length) return null;
   if (from.row === to.row && from.col === to.col) return null;
   if (board[from.row]?.[from.col] == null || board[to.row]?.[to.col] == null) return null;
+  if (board[from.row][from.col] < 0 || board[to.row][to.col] < 0) return null;
   if (board[from.row][from.col] !== board[to.row][to.col]) return null;
 
   const rows = board.length;
@@ -95,7 +96,7 @@ function reconstructPath(end, parents) {
 export function findAvailableMove(board) {
   const byType = new Map();
   board.forEach((row, rowIndex) => row.forEach((tile, colIndex) => {
-    if (tile == null) return;
+    if (tile == null || tile < 0) return;
     if (!byType.has(tile)) byType.set(tile, []);
     byType.get(tile).push({ row: rowIndex, col: colIndex });
   }));

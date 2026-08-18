@@ -1,4 +1,4 @@
-import { COLS, ROWS, TILE_TYPES } from './constants.js';
+import { BLOCKED_TILE, COLS, ROWS, TILE_TYPES } from './constants.js';
 import { findAvailableMove, findPath } from './pathfinding.js';
 
 export function shuffleArray(values, random = Math.random) {
@@ -23,25 +23,49 @@ export function createBoard(rows = ROWS, cols = COLS, tileTypes = TILE_TYPES, ra
   return ensureSolvable(board, random).board;
 }
 
+export function createBoardWithObstacles(
+  rows = ROWS,
+  cols = COLS,
+  tileTypes = TILE_TYPES,
+  blockedPositions = [],
+  random = Math.random
+) {
+  const blockedKeys = new Set(blockedPositions.map(({ row, col }) => `${row},${col}`));
+  const targets = [];
+  const board = Array.from({ length: rows }, (_, row) => Array.from({ length: cols }, (_, col) => {
+    if (blockedKeys.has(`${row},${col}`)) return BLOCKED_TILE;
+    targets.push({ row, col });
+    return null;
+  }));
+  if (targets.length % 2 !== 0) throw new Error('可用棋盘格数必须为偶数');
+  const tiles = [];
+  for (let pair = 0; pair < targets.length / 2; pair += 1) {
+    const type = pair % tileTypes;
+    tiles.push(type, type);
+  }
+  placeValues(board, shuffleArray(tiles, random), targets);
+  return ensureSolvable(board, random).board;
+}
+
 export function reshuffleBoard(board, random = Math.random) {
-  const values = board.flat().filter((value) => value != null);
-  const next = board.map((row) => row.map(() => null));
+  const values = board.flat().filter(isPlayableTile);
+  const next = board.map((row) => row.map((value) => value === BLOCKED_TILE ? BLOCKED_TILE : null));
   placeValues(next, shuffleArray(values, random), occupiedPositions(board));
   return ensureSolvable(next, random);
 }
 
 export function ensureSolvable(board, random = Math.random, maxAttempts = 120) {
-  if (board.flat().filter((tile) => tile != null).length < 2) {
+  if (board.flat().filter(isPlayableTile).length < 2) {
     return { board: board.map((row) => [...row]), reshuffled: false };
   }
   if (findAvailableMove(board)) {
     return { board: board.map((row) => [...row]), reshuffled: false };
   }
 
-  const values = board.flat().filter((value) => value != null);
+  const values = board.flat().filter(isPlayableTile);
   const positions = occupiedPositions(board);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const candidate = board.map((row) => row.map(() => null));
+    const candidate = board.map((row) => row.map((value) => value === BLOCKED_TILE ? BLOCKED_TILE : null));
     placeValues(candidate, shuffleArray(values, random), positions);
     if (findAvailableMove(candidate)) return { board: candidate, reshuffled: true };
   }
@@ -50,7 +74,7 @@ export function ensureSolvable(board, random = Math.random, maxAttempts = 120) {
 }
 
 function forceOneMove(board, values, positions, random) {
-  const geometry = board.map((row) => row.map((tile) => tile == null ? null : 0));
+  const geometry = board.map((row) => row.map((tile) => tile == null ? null : tile === BLOCKED_TILE ? BLOCKED_TILE : 0));
   let connectable = null;
   outer: for (let first = 0; first < positions.length; first += 1) {
     for (let second = first + 1; second < positions.length; second += 1) {
@@ -71,7 +95,7 @@ function forceOneMove(board, values, positions, random) {
   remaining.splice(remaining.indexOf(pairType), 1);
   remaining.splice(remaining.indexOf(pairType), 1);
   const shuffled = shuffleArray(remaining, random);
-  const result = board.map((row) => row.map(() => null));
+  const result = board.map((row) => row.map((value) => value === BLOCKED_TILE ? BLOCKED_TILE : null));
   result[connectable[0].row][connectable[0].col] = pairType;
   result[connectable[1].row][connectable[1].col] = pairType;
   let index = 0;
@@ -85,7 +109,7 @@ function forceOneMove(board, values, positions, random) {
 function occupiedPositions(board) {
   const positions = [];
   board.forEach((row, rowIndex) => row.forEach((tile, colIndex) => {
-    if (tile != null) positions.push({ row: rowIndex, col: colIndex });
+    if (isPlayableTile(tile)) positions.push({ row: rowIndex, col: colIndex });
   }));
   return positions;
 }
@@ -95,4 +119,8 @@ function placeValues(board, values, positions = null) {
   targets.forEach((position, index) => {
     board[position.row][position.col] = values[index] ?? null;
   });
+}
+
+function isPlayableTile(value) {
+  return value != null && value !== BLOCKED_TILE;
 }

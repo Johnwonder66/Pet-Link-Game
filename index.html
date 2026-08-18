@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#edf6f5" />
-    <meta name="description" content="20只原创萌宠、十关渐进难度的经典连连看游戏。" />
+    <meta name="description" content="20只原创萌宠、1000关岛屿闯关与无尽模式的经典连连看游戏。" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="绒光连连看" />
@@ -23,7 +23,7 @@
           <div>
             <div class="brand-title-row">
               <h1>绒光萌宠连连看</h1>
-              <small id="game-version" class="game-version">v2.0.0</small>
+              <small id="game-version" class="game-version">v3.0.0</small>
             </div>
             <p>让走散的萌宠重新产生心光共鸣</p>
           </div>
@@ -36,7 +36,7 @@
           </div>
           <div class="stat">
             <span class="stat-label">关卡</span>
-            <strong id="level">1 / 10</strong>
+            <strong id="level">1 / 1000</strong>
           </div>
           <div class="timer-stat">
             <div class="timer-copy">
@@ -71,7 +71,12 @@
               <span id="mission-time">☆ ≥120秒</span>
               <span id="mission-shuffle">☆ 洗牌≤2</span>
             </div>
-            <div id="level-progress" class="level-progress" aria-label="十关进度"></div>
+            <div id="captain-card" class="captain-card" aria-label="本岛萌宠队长">
+              <span id="captain-avatar" class="captain-avatar" aria-hidden="true"></span>
+              <span><small>本岛队长</small><strong id="captain-name">焰耳狐</strong></span>
+            </div>
+            <div id="level-progress" class="level-progress" aria-label="当前岛屿进度"></div>
+            <button id="map-button" class="map-button" type="button">岛屿地图 <b id="map-progress">1/1000</b></button>
           </div>
 
           <div id="board" class="board" role="grid" aria-label="连连看棋盘">
@@ -174,11 +179,36 @@
         <header class="collection-header">
           <div>
             <h2 id="collection-title">萌宠图鉴</h2>
-            <p id="collection-summary">已发现 0 / 20 · 获得 0 / 30 星</p>
+            <p id="collection-summary">已发现 0 / 20 · 获得 0 / 3000 星</p>
           </div>
           <button id="collection-close" type="button" aria-label="关闭萌宠图鉴">×</button>
         </header>
         <div id="collection-grid" class="collection-grid"></div>
+      </section>
+    </div>
+
+    <div id="map-dialog" class="dialog-backdrop map-backdrop" hidden>
+      <section class="island-dialog" role="dialog" aria-modal="true" aria-labelledby="map-title">
+        <header class="island-header">
+          <div>
+            <h2 id="map-title">晨露岛</h2>
+            <p id="map-summary">第 1—20 关 · 已解锁第 1 关</p>
+          </div>
+          <button id="map-close" type="button" aria-label="关闭岛屿地图">×</button>
+        </header>
+        <div class="island-nav">
+          <button id="map-previous" type="button" aria-label="上一座岛">‹</button>
+          <div class="island-captain">
+            <span id="map-captain-avatar" class="captain-avatar" aria-hidden="true"></span>
+            <span><small>守护队长</small><strong id="map-captain-name">焰耳狐</strong></span>
+          </div>
+          <button id="map-next" type="button" aria-label="下一座岛">›</button>
+        </div>
+        <div id="map-levels" class="island-levels" aria-label="本岛关卡"></div>
+        <button id="endless-button" class="endless-button" type="button" disabled>
+          <strong>无尽星海</strong>
+          <span id="endless-status">通关第1000关后解锁</span>
+        </button>
       </section>
     </div>
 

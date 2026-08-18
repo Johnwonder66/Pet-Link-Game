@@ -1,6 +1,6 @@
 export const ROWS = 8;
 export const COLS = 10;
-export const GAME_VERSION = '2.0.0';
+export const GAME_VERSION = '3.0.0';
 export const START_TIME = 180;
 export const MAX_HINTS = 10;
 export const MAX_SHUFFLES = 10;
@@ -8,6 +8,8 @@ export const MAX_TIME_BOOSTS = 10;
 export const MAX_BOMBS = 3;
 export const MATCH_TIME_BONUS = 1;
 export const TILE_TYPES = 20;
+export const BLOCKED_TILE = -1;
+export const CAPTAIN_TIME_BONUS = 2;
 
 export const PET_PROFILES = [
   { name: '焰耳狐', detail: '热情的小火苗，开心时尾巴会噼啪作响。' },
