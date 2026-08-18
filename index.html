@@ -21,7 +21,10 @@
         <div class="brand" aria-label="绒光萌宠连连看">
           <span class="brand-mark" aria-hidden="true">✦</span>
           <div>
-            <h1>绒光萌宠连连看</h1>
+            <div class="brand-title-row">
+              <h1>绒光萌宠连连看</h1>
+              <small id="game-version" class="game-version">v2.0.0</small>
+            </div>
             <p>让走散的萌宠重新产生心光共鸣</p>
           </div>
         </div>
@@ -62,6 +65,11 @@
               <span>本关消除模式</span>
               <strong id="level-mode">经典静止</strong>
               <small id="level-rule">消除后，其余棋子保持原位</small>
+            </div>
+            <div class="star-missions" aria-label="本关三星任务">
+              <span id="mission-clear">☆ 通关</span>
+              <span id="mission-time">☆ ≥120秒</span>
+              <span id="mission-shuffle">☆ 洗牌≤2</span>
             </div>
             <div id="level-progress" class="level-progress" aria-label="十关进度"></div>
           </div>
@@ -113,7 +121,9 @@
           <section class="powerups" aria-labelledby="powerups-title">
             <div class="powerups-heading">
               <h2 id="powerups-title">奇趣道具</h2>
-              <span>每局限量</span>
+              <button id="collection-button" class="collection-button" type="button">
+                萌宠图鉴 <b id="collection-count">0/20</b>
+              </button>
             </div>
             <div class="powerup-list">
               <button id="magic-button" class="powerup-button magic" type="button" aria-pressed="false">
@@ -150,11 +160,25 @@
         <div id="dialog-icon" class="dialog-icon">✦</div>
         <h2 id="dialog-title">萌宠都重逢啦！</h2>
         <p id="dialog-message">干得漂亮，你完成了这一关。</p>
+        <div id="dialog-stars" class="dialog-stars" aria-label="本关获得星星"></div>
         <div class="dialog-score">本局得分 <strong id="dialog-score">0</strong></div>
         <div class="dialog-actions">
           <button id="dialog-secondary" class="button secondary" type="button">重新开始</button>
           <button id="dialog-primary" class="button primary" type="button">下一关</button>
         </div>
+      </section>
+    </div>
+
+    <div id="collection-dialog" class="dialog-backdrop collection-backdrop" hidden>
+      <section class="collection-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-title">
+        <header class="collection-header">
+          <div>
+            <h2 id="collection-title">萌宠图鉴</h2>
+            <p id="collection-summary">已发现 0 / 20 · 获得 0 / 30 星</p>
+          </div>
+          <button id="collection-close" type="button" aria-label="关闭萌宠图鉴">×</button>
+        </header>
+        <div id="collection-grid" class="collection-grid"></div>
       </section>
     </div>
 

@@ -1,10 +1,12 @@
-import { COLS, ROWS, TILE_NAMES } from './constants.js';
+import { COLS, GAME_VERSION, PET_PROFILES, ROWS, TILE_NAMES } from './constants.js';
 import { GameEngine } from './engine.js';
 import { LEVELS, MAX_LEVELS, MOVEMENT_LABELS, getLevelConfig } from './levels.js';
 import { placeTileInGrid } from './tile-layout.js';
+import { createProgressStore } from './progress.js';
 import { registerPWA } from './pwa.js';
 
 const engine = new GameEngine();
+const progressStore = createProgressStore();
 const elements = {
   board: document.querySelector('#board'),
   pathLayer: document.querySelector('#path-layer'),
@@ -17,6 +19,10 @@ const elements = {
   levelMode: document.querySelector('#level-mode'),
   levelRule: document.querySelector('#level-rule'),
   levelProgress: document.querySelector('#level-progress'),
+  gameVersion: document.querySelector('#game-version'),
+  missionClear: document.querySelector('#mission-clear'),
+  missionTime: document.querySelector('#mission-time'),
+  missionShuffle: document.querySelector('#mission-shuffle'),
   hintButton: document.querySelector('#hint-button'),
   hintCount: document.querySelector('#hint-count'),
   shuffleButton: document.querySelector('#shuffle-button'),
@@ -33,11 +39,18 @@ const elements = {
   timeCount: document.querySelector('#time-count'),
   bombButton: document.querySelector('#bomb-button'),
   bombCount: document.querySelector('#bomb-count'),
+  collectionButton: document.querySelector('#collection-button'),
+  collectionCount: document.querySelector('#collection-count'),
+  collectionDialog: document.querySelector('#collection-dialog'),
+  collectionClose: document.querySelector('#collection-close'),
+  collectionSummary: document.querySelector('#collection-summary'),
+  collectionGrid: document.querySelector('#collection-grid'),
   toast: document.querySelector('#toast'),
   dialog: document.querySelector('#game-dialog'),
   dialogIcon: document.querySelector('#dialog-icon'),
   dialogTitle: document.querySelector('#dialog-title'),
   dialogMessage: document.querySelector('#dialog-message'),
+  dialogStars: document.querySelector('#dialog-stars'),
   dialogScore: document.querySelector('#dialog-score'),
   dialogPrimary: document.querySelector('#dialog-primary'),
   dialogSecondary: document.querySelector('#dialog-secondary')
@@ -49,9 +62,12 @@ let pathTimer;
 let comboCount = 0;
 let lastMatchAt = 0;
 let activePowerup = null;
+let collectionResumeOnClose = false;
 
 function renderBoard() {
   const snapshot = engine.snapshot();
+  progressStore.discover(snapshot.board.flat().filter((type) => type != null));
+  renderCollectionSummary();
   elements.board.querySelectorAll('.tile').forEach((tile) => tile.remove());
   snapshot.board.forEach((row, rowIndex) => row.forEach((type, colIndex) => {
     if (type == null) return;
@@ -67,8 +83,11 @@ function renderBoard() {
     tile.style.setProperty('--sprite-y', Math.floor(type / 5));
     tile.dataset.type = type;
     tile.dataset.label = TILE_NAMES[type];
+    const shiny = snapshot.shinyBoard[rowIndex][colIndex] === 1;
+    tile.classList.toggle('shiny', shiny);
+    tile.dataset.shiny = String(shiny);
     tile.setAttribute('role', 'gridcell');
-    tile.setAttribute('aria-label', `${TILE_NAMES[type]}，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
+    tile.setAttribute('aria-label', `${shiny ? '闪光' : ''}${TILE_NAMES[type]}，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
     if (snapshot.selected?.row === rowIndex && snapshot.selected?.col === colIndex) {
       tile.classList.add('selected');
       tile.setAttribute('aria-selected', 'true');
@@ -80,6 +99,7 @@ function renderBoard() {
 
 function renderStats() {
   const snapshot = engine.snapshot();
+  elements.gameVersion.textContent = `v${GAME_VERSION}`;
   elements.score.textContent = snapshot.score.toLocaleString('zh-CN');
   elements.level.textContent = `${snapshot.level} / ${snapshot.maxLevels}`;
   elements.levelMode.textContent = snapshot.levelConfig.name;
@@ -87,6 +107,7 @@ function renderStats() {
     ? `${snapshot.activeTileTypes}种萌宠 · ${snapshot.levelConfig.rule} · 下一次：${snapshot.nextMovementLabel}`
     : `${snapshot.activeTileTypes}种萌宠 · ${snapshot.levelConfig.rule}`;
   renderLevelProgress(snapshot.level);
+  renderMissions(snapshot);
   elements.timer.textContent = formatTime(snapshot.timeLeft);
   elements.remaining.textContent = snapshot.remaining;
   elements.hintCount.textContent = `追光萤 · ${snapshot.hintsLeft} 次`;
@@ -107,12 +128,14 @@ function renderStats() {
   elements.pauseHelp.textContent = paused ? '恢复本局计时' : '停止本局计时';
   elements.pauseOverlay.hidden = !paused;
   elements.board.classList.toggle('is-paused', paused);
+  document.querySelector('.timer-stat').classList.toggle('time-frozen', snapshot.timerFrozenTicks > 0);
   const percentage = snapshot.timeLeft / snapshot.totalTime * 100;
   elements.timerBar.style.width = `${percentage}%`;
   elements.timerBar.classList.toggle('urgent', percentage <= 25);
 }
 
 function renderLevelProgress(activeLevel) {
+  const storedStars = progressStore.snapshot().stars;
   if (elements.levelProgress.children.length !== LEVELS.length) {
     elements.levelProgress.replaceChildren(...LEVELS.map((level) => {
       const dot = document.createElement('span');
@@ -123,9 +146,28 @@ function renderLevelProgress(activeLevel) {
     }));
   }
   [...elements.levelProgress.children].forEach((dot, index) => {
-    dot.classList.toggle('completed', index + 1 < activeLevel);
+    const level = index + 1;
+    const stars = Number(storedStars[level] ?? 0);
+    dot.classList.toggle('completed', level < activeLevel || stars > 0);
     dot.classList.toggle('active', index + 1 === activeLevel);
     dot.setAttribute('aria-current', index + 1 === activeLevel ? 'step' : 'false');
+    dot.title = `第 ${level} 关：${LEVELS[index].name} · 历史最高 ${stars}/3 星`;
+  });
+}
+
+function renderMissions(snapshot) {
+  const won = snapshot.state === 'won';
+  const timeReady = snapshot.timeLeft >= snapshot.levelConfig.starTime;
+  const shuffleReady = snapshot.shufflesUsed <= 2;
+  const missions = [
+    [elements.missionClear, '通关', won, false],
+    [elements.missionTime, `≥${snapshot.levelConfig.starTime}秒`, won && timeReady, timeReady],
+    [elements.missionShuffle, '洗牌≤2', won && shuffleReady, shuffleReady]
+  ];
+  missions.forEach(([element, label, earned, eligible]) => {
+    element.textContent = `${earned ? '★' : '☆'} ${label}`;
+    element.classList.toggle('earned', earned);
+    element.classList.toggle('eligible', !earned && eligible);
   });
 }
 
@@ -153,19 +195,28 @@ function handleTileClick(event) {
     drawPath(result.path);
     markMatched(result.from, result.to);
     triggerMatchEffects(result, engine.score - scoreBefore, comboCount);
-    flashTimerBonus(result.timeAdded);
+    const comboReward = applyComboReward(comboCount);
+    flashTimerBonus(result.timeAdded + comboReward.timeAdded);
+    if (result.shiny) showToast('闪光共鸣！本次得分翻倍');
     const movementText = result.movement === 'static' ? '' : MOVEMENT_LABELS[result.movement];
-    elements.status.textContent = comboCount >= 2
+    let status = comboCount >= 2
       ? `${comboCount} 连击！时间 +${result.timeAdded} 秒${movementText ? ` · 萌宠${movementText}` : ''}`
       : `共鸣成功，时间 +${result.timeAdded} 秒${movementText ? ` · ${movementText}` : ''}`;
+    if (result.shiny) status += ' · 闪光双倍得分';
+    if (comboReward.message) status += ` · ${comboReward.message}`;
+    elements.status.textContent = status;
     renderStats();
+    const shouldEcho = comboReward.echo;
     window.setTimeout(() => {
       clearPath();
       render();
       showMovementCue(result.movement);
       locked = false;
       if (result.won) showEndDialog(true);
-      else if (result.autoShuffled) showToast('暂时无解，已为你自动重排');
+      else {
+        if (result.autoShuffled) showToast('暂时无解，已为你自动重排');
+        if (shouldEcho) window.setTimeout(performComboEcho, 80);
+      }
     }, 340);
     return;
   }
@@ -253,6 +304,11 @@ elements.magicButton.addEventListener('click', () => {
 });
 elements.timeButton.addEventListener('click', useTimePowerup);
 elements.bombButton.addEventListener('click', useBombPowerup);
+elements.collectionButton.addEventListener('click', openCollection);
+elements.collectionClose.addEventListener('click', closeCollection);
+elements.collectionDialog.addEventListener('click', (event) => {
+  if (event.target === elements.collectionDialog) closeCollection();
+});
 elements.dialogSecondary.addEventListener('click', () => restart(engine.level));
 elements.dialogPrimary.addEventListener('click', () => {
   const nextLevel = engine.state === 'won'
@@ -260,6 +316,56 @@ elements.dialogPrimary.addEventListener('click', () => {
     : engine.level;
   restart(nextLevel);
 });
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !elements.collectionDialog.hidden) closeCollection();
+});
+
+function renderCollectionSummary() {
+  const progress = progressStore.snapshot();
+  const totalStars = Object.values(progress.stars).reduce((total, stars) => total + Number(stars), 0);
+  elements.collectionCount.textContent = `${progress.discovered.length}/${PET_PROFILES.length}`;
+  elements.collectionSummary.textContent = `已发现 ${progress.discovered.length} / ${PET_PROFILES.length} · 获得 ${totalStars} / 30 星 · v${GAME_VERSION}`;
+}
+
+function renderCollection() {
+  const progress = progressStore.snapshot();
+  const discovered = new Set(progress.discovered);
+  elements.collectionGrid.replaceChildren(...PET_PROFILES.map((pet, type) => {
+    const unlocked = discovered.has(type);
+    const entry = document.createElement('article');
+    entry.className = `pet-entry${unlocked ? '' : ' locked'}`;
+    const portrait = document.createElement('span');
+    portrait.className = 'pet-portrait';
+    portrait.style.setProperty('--sprite-x', type % 5);
+    portrait.style.setProperty('--sprite-y', Math.floor(type / 5));
+    portrait.setAttribute('aria-hidden', 'true');
+    const name = document.createElement('strong');
+    name.textContent = unlocked ? pet.name : '？？？';
+    const detail = document.createElement('small');
+    detail.textContent = unlocked ? pet.detail : '在后续关卡等待相遇';
+    entry.append(portrait, name, detail);
+    return entry;
+  }));
+  renderCollectionSummary();
+}
+
+function openCollection() {
+  collectionResumeOnClose = engine.state === 'playing';
+  if (collectionResumeOnClose) engine.pause();
+  renderCollection();
+  renderStats();
+  elements.collectionDialog.hidden = false;
+  elements.collectionClose.focus();
+}
+
+function closeCollection() {
+  elements.collectionDialog.hidden = true;
+  if (collectionResumeOnClose && engine.state === 'paused') engine.resume();
+  collectionResumeOnClose = false;
+  renderStats();
+  elements.collectionButton.focus();
+}
 
 function restart(level) {
   engine.reset(level);
@@ -301,7 +407,8 @@ function useMagicPowerup(position) {
   flashTimerBonus(result.timeAdded);
   showSpecialBanner('✦', '心光结', 'magic-banner');
   elements.board.classList.add('magic-cast');
-  elements.status.textContent = `心光结发动：萌宠重逢，时间 +${result.timeAdded} 秒`;
+  elements.status.textContent = `心光结发动：萌宠重逢，时间 +${result.timeAdded} 秒${result.shiny ? ' · 闪光双倍得分' : ''}`;
+  if (result.shiny) showToast('闪光共鸣！本次得分翻倍');
   renderStats();
   window.setTimeout(() => finishPowerup(result, 'magic-cast'), 680);
 }
@@ -327,9 +434,9 @@ function useBombPowerup() {
   const positions = result.matches.flat();
   markSpecialTiles(positions, 'bomb-hit');
   flashTimerBonus(result.timeAdded);
-  showSpecialBanner('3', '对清除', 'bomb-banner');
+  showSpecialBanner(String(result.matches.length), '对送回', 'bomb-banner');
   elements.board.classList.add('bomb-cast');
-  elements.status.textContent = `绒星烟花发动：送回 ${result.matches.length} 对萌宠，时间 +${result.timeAdded} 秒`;
+  elements.status.textContent = `绒星烟花发动：送回 ${result.matches.length} 对萌宠，时间 +${result.timeAdded} 秒${result.shinyMatches ? ` · 命中${result.shinyMatches}对闪光` : ''}`;
   renderStats();
   window.setTimeout(() => finishPowerup(result, 'bomb-cast'), 720);
 }
@@ -379,6 +486,47 @@ function showSpecialBanner(value, label, className) {
 function resetCombo() {
   comboCount = 0;
   lastMatchAt = 0;
+}
+
+function applyComboReward(combo) {
+  if (combo === 3) {
+    engine.grantTime(2);
+    showSpecialBanner('+2', '秒连击奖励', 'time-banner');
+    return { timeAdded: 2, message: '3连击奖励 +2秒', echo: false };
+  }
+  if (combo === 5) {
+    engine.freezeTimer(3);
+    showSpecialBanner('❄', '计时冻结3秒', 'freeze-banner');
+    return { timeAdded: 0, message: '5连击冻结计时3秒', echo: false };
+  }
+  if (combo === 8) {
+    showSpecialBanner('♥', '心光回响', 'echo-banner');
+    return { timeAdded: 0, message: '8连击自动送回一对', echo: true };
+  }
+  return { timeAdded: 0, message: '', echo: false };
+}
+
+function performComboEcho() {
+  if (locked || engine.state !== 'playing') return;
+  const scoreBefore = engine.score;
+  const result = engine.autoMatch();
+  if (!result) return;
+  locked = true;
+  drawPath(result.path);
+  markMatched(result.from, result.to);
+  triggerMatchEffects(result, engine.score - scoreBefore, comboCount);
+  flashTimerBonus(result.timeAdded);
+  showSpecialBanner('♥', '自动重逢', 'echo-banner');
+  elements.status.textContent = `心光回响送回一对萌宠，时间 +${result.timeAdded} 秒${result.shiny ? ' · 闪光双倍得分' : ''}`;
+  renderStats();
+  window.setTimeout(() => {
+    clearPath();
+    render();
+    showMovementCue(result.movement);
+    locked = false;
+    if (result.won) showEndDialog(true);
+    else if (result.autoShuffled) showToast('心光回响后已自动整理棋盘');
+  }, 380);
 }
 
 function triggerMatchEffects(result, scoreDelta, combo) {
@@ -452,14 +600,25 @@ function createPetalRain() {
 function showEndDialog(won) {
   const completedAll = won && engine.level === MAX_LEVELS;
   const nextLevel = won && !completedAll ? getLevelConfig(engine.level + 1) : null;
+  const stars = won ? engine.starsEarned : 0;
+  if (won) progressStore.recordStars(engine.level, stars);
+  elements.dialogStars.replaceChildren(...Array.from({ length: 3 }, (_, index) => {
+    const star = document.createElement('span');
+    star.textContent = '★';
+    star.classList.toggle('earned', index < stars);
+    return star;
+  }));
+  elements.dialogStars.hidden = !won;
+  renderCollectionSummary();
+  renderLevelProgress(engine.level);
   elements.dialogIcon.textContent = won ? (completedAll ? '🏆' : '✿') : '⌛';
   elements.dialogTitle.textContent = completedAll
     ? '十关全部通关！'
     : won ? `第 ${engine.level} 关完成！` : '时间到';
   elements.dialogMessage.textContent = completedAll
-    ? '你让绒光群岛的全部萌宠都顺利重逢了。'
+    ? `你让绒光群岛的全部萌宠都顺利重逢了，本关获得 ${stars}/3 星。`
     : won
-      ? `下一关：${nextLevel.name}。${nextLevel.rule}`
+      ? `本关获得 ${stars}/3 星。下一关：${nextLevel.name}。${nextLevel.rule}`
       : '差一点就成功了，再试一次吧。';
   elements.dialogScore.textContent = engine.score.toLocaleString('zh-CN');
   elements.dialogPrimary.textContent = completedAll

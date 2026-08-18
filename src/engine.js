@@ -6,7 +6,7 @@ import {
   MAX_TIME_BOOSTS,
   START_TIME
 } from './constants.js';
-import { createBoard, ensureSolvable, reshuffleBoard } from './board.js';
+import { createBoard, ensureSolvable, reshuffleBoard, shuffleArray } from './board.js';
 import { applyBoardMovement } from './board-movement.js';
 import { MAX_LEVELS, getLevelConfig, getNextMovementLabel, resolveMovement } from './levels.js';
 import { findAvailableMove, findPath } from './pathfinding.js';
@@ -30,11 +30,16 @@ export class GameEngine {
     this.totalTime = this.timeLeft;
     this.hintsLeft = MAX_HINTS;
     this.shufflesLeft = MAX_SHUFFLES;
+    this.shufflesUsed = 0;
+    this.timerFrozenTicks = 0;
     this.powerups = { magic: 2, time: MAX_TIME_BOOSTS, bomb: MAX_BOMBS };
     this.selected = null;
     this.state = 'playing';
     this.activeTileTypes = this.tileTypes ?? this.levelConfig.tileTypes;
     this.board = createBoard(this.rows, this.cols, this.activeTileTypes, this.random);
+    this.shinyBoard = this.createShinyBoard();
+    this.shinyNeedsRefresh = false;
+    this.assignShinyPairs(1 + Math.floor(this.random() * 2));
     return this.snapshot();
   }
 
@@ -58,30 +63,44 @@ export class GameEngine {
       return { type: 'invalid', from, to: position };
     }
 
+    return this.completePair(from, position, path);
+  }
+
+  completePair(from, to, path, source = 'manual') {
+    const shiny = this.isShinyPair(from, to);
+    const shinyTouched = this.countShinyPositions([from, to]);
     this.board[from.row][from.col] = null;
-    this.board[position.row][position.col] = null;
+    this.board[to.row][to.col] = null;
+    this.clearShinyPositions([from, to]);
+    if (shiny) this.shinyPairsRemaining -= 1;
+    else if (shinyTouched > 0) this.shinyNeedsRefresh = true;
     this.selected = null;
     const timeAdded = this.addMatchTime(1);
     const timeBonus = Math.min(8, Math.ceil(this.timeLeft / 45));
-    this.score += 100 + timeBonus * 5;
-    const remaining = this.remaining;
-    if (remaining === 0) {
+    const baseScore = 100 + timeBonus * 5;
+    const scoreAdded = baseScore * (shiny ? 2 : 1);
+    this.score += scoreAdded;
+    const common = { type: 'match', source, from, to, path, shiny, scoreAdded, timeAdded };
+    if (this.remaining === 0) {
       this.state = 'won';
       this.score += this.timeLeft * 10;
-      return { type: 'match', from, to: position, path, won: true, autoShuffled: false, timeAdded };
+      return { ...common, won: true, autoShuffled: false };
     }
 
     const settled = this.settleAfterRemoval();
     return {
-      type: 'match',
-      from,
-      to: position,
-      path,
+      ...common,
       won: false,
       autoShuffled: settled.autoShuffled,
-      movement: settled.movement,
-      timeAdded
+      movement: settled.movement
     };
+  }
+
+  autoMatch() {
+    if (this.state !== 'playing') return null;
+    const move = findAvailableMove(this.board);
+    if (!move) return null;
+    return this.completePair(move.from, move.to, move.path, 'combo');
   }
 
   hint() {
@@ -95,8 +114,10 @@ export class GameEngine {
   shuffle() {
     if (this.state !== 'playing' || this.shufflesLeft <= 0) return false;
     this.board = reshuffleBoard(this.board, this.random).board;
+    this.assignShinyPairs(this.shinyPairsRemaining);
     this.selected = null;
     this.shufflesLeft -= 1;
+    this.shufflesUsed += 1;
     return true;
   }
 
@@ -114,12 +135,18 @@ export class GameEngine {
 
     this.powerups.magic -= 1;
     this.selected = null;
+    const shiny = this.isShinyPair(position, partner);
+    const shinyTouched = this.countShinyPositions([position, partner]);
     this.board[position.row][position.col] = null;
     this.board[partner.row][partner.col] = null;
+    this.clearShinyPositions([position, partner]);
+    if (shiny) this.shinyPairsRemaining -= 1;
+    else if (shinyTouched > 0) this.shinyNeedsRefresh = true;
     const timeAdded = this.addMatchTime(1);
-    this.score += 180;
+    const scoreAdded = 180 * (shiny ? 2 : 1);
+    this.score += scoreAdded;
     const won = this.finishIfEmpty();
-    if (won) return { type: 'magic', from: position, to: partner, won, autoShuffled: false, timeAdded };
+    if (won) return { type: 'magic', from: position, to: partner, won, autoShuffled: false, timeAdded, shiny, scoreAdded };
     const settled = this.settleAfterRemoval();
     return {
       type: 'magic',
@@ -128,7 +155,9 @@ export class GameEngine {
       won,
       autoShuffled: settled.autoShuffled,
       movement: settled.movement,
-      timeAdded
+      timeAdded,
+      shiny,
+      scoreAdded
     };
   }
 
@@ -159,13 +188,19 @@ export class GameEngine {
 
     this.powerups.bomb -= 1;
     this.selected = null;
+    const shinyMatches = matches.filter(([from, to]) => this.isShinyPair(from, to)).length;
+    const shinyTouched = this.countShinyPositions(matches.flat());
     matches.flat().forEach((position) => {
       this.board[position.row][position.col] = null;
     });
+    this.clearShinyPositions(matches.flat());
+    this.shinyPairsRemaining -= shinyMatches;
+    if (shinyTouched !== shinyMatches * 2) this.shinyNeedsRefresh = true;
     const timeAdded = this.addMatchTime(matches.length);
-    this.score += matches.length * 140;
+    const scoreAdded = matches.length * 140 + shinyMatches * 140;
+    this.score += scoreAdded;
     const won = this.finishIfEmpty();
-    if (won) return { type: 'bomb', matches, won, autoShuffled: false, timeAdded };
+    if (won) return { type: 'bomb', matches, won, autoShuffled: false, timeAdded, shinyMatches, scoreAdded };
     const settled = this.settleAfterRemoval();
     return {
       type: 'bomb',
@@ -173,7 +208,9 @@ export class GameEngine {
       won,
       autoShuffled: settled.autoShuffled,
       movement: settled.movement,
-      timeAdded
+      timeAdded,
+      shinyMatches,
+      scoreAdded
     };
   }
 
@@ -184,12 +221,69 @@ export class GameEngine {
     return seconds;
   }
 
+  grantTime(seconds) {
+    this.timeLeft += seconds;
+    this.totalTime = Math.max(this.totalTime, this.timeLeft);
+    return seconds;
+  }
+
+  freezeTimer(seconds = 3) {
+    if (this.state !== 'playing') return false;
+    this.timerFrozenTicks = Math.max(this.timerFrozenTicks, seconds);
+    return true;
+  }
+
+  createShinyBoard() {
+    return this.board.map((row) => row.map((tile) => tile == null ? null : 0));
+  }
+
+  assignShinyPairs(pairCount) {
+    this.shinyBoard = this.createShinyBoard();
+    const byType = new Map();
+    this.board.forEach((row, rowIndex) => row.forEach((tile, colIndex) => {
+      if (tile == null) return;
+      if (!byType.has(tile)) byType.set(tile, []);
+      byType.get(tile).push({ row: rowIndex, col: colIndex });
+    }));
+    const candidates = shuffleArray(
+      [...byType.entries()].filter(([, positions]) => positions.length >= 2),
+      this.random
+    );
+    let assigned = 0;
+    for (const [, positions] of candidates) {
+      if (assigned >= pairCount) break;
+      const [from, to] = shuffleArray(positions, this.random);
+      this.shinyBoard[from.row][from.col] = 1;
+      this.shinyBoard[to.row][to.col] = 1;
+      assigned += 1;
+    }
+    this.shinyPairsRemaining = assigned;
+    this.shinyNeedsRefresh = false;
+  }
+
+  isShinyPair(from, to) {
+    return this.shinyBoard[from.row]?.[from.col] === 1
+      && this.shinyBoard[to.row]?.[to.col] === 1;
+  }
+
+  clearShinyPositions(positions) {
+    positions.forEach((position) => {
+      if (this.shinyBoard[position.row]) this.shinyBoard[position.row][position.col] = null;
+    });
+  }
+
+  countShinyPositions(positions) {
+    return positions.filter((position) => this.shinyBoard[position.row]?.[position.col] === 1).length;
+  }
+
   settleAfterRemoval() {
     const movement = resolveMovement(this.levelConfig, this.movementStep);
     this.board = applyBoardMovement(this.board, movement);
+    this.shinyBoard = applyBoardMovement(this.shinyBoard, movement);
     this.movementStep += 1;
     const solvable = ensureSolvable(this.board, this.random);
     this.board = solvable.board;
+    if (solvable.reshuffled || this.shinyNeedsRefresh) this.assignShinyPairs(this.shinyPairsRemaining);
     return { movement, autoShuffled: solvable.reshuffled };
   }
 
@@ -214,6 +308,10 @@ export class GameEngine {
 
   tick() {
     if (this.state !== 'playing') return this.state;
+    if (this.timerFrozenTicks > 0) {
+      this.timerFrozenTicks -= 1;
+      return this.state;
+    }
     this.timeLeft = Math.max(0, this.timeLeft - 1);
     if (this.timeLeft === 0) this.state = 'lost';
     return this.state;
@@ -223,9 +321,17 @@ export class GameEngine {
     return this.board.flat().filter((tile) => tile != null).length;
   }
 
+  get starsEarned() {
+    if (this.state !== 'won') return 0;
+    return 1
+      + Number(this.timeLeft >= this.levelConfig.starTime)
+      + Number(this.shufflesUsed <= 2);
+  }
+
   snapshot() {
     return {
       board: this.board.map((row) => [...row]),
+      shinyBoard: this.shinyBoard.map((row) => [...row]),
       level: this.level,
       maxLevels: MAX_LEVELS,
       levelConfig: { ...this.levelConfig },
@@ -237,6 +343,10 @@ export class GameEngine {
       totalTime: this.totalTime,
       hintsLeft: this.hintsLeft,
       shufflesLeft: this.shufflesLeft,
+      shufflesUsed: this.shufflesUsed,
+      timerFrozenTicks: this.timerFrozenTicks,
+      shinyPairsRemaining: this.shinyPairsRemaining,
+      starsEarned: this.starsEarned,
       powerups: { ...this.powerups },
       selected: this.selected,
       remaining: this.remaining,

@@ -4,6 +4,7 @@ export const LEVELS = [
     name: '经典静止',
     movement: 'static',
     tileTypes: 12,
+    starTime: 120,
     rule: '消除后，其余棋子保持原位'
   },
   {
@@ -11,6 +12,7 @@ export const LEVELS = [
     name: '向下掉落',
     movement: 'down',
     tileTypes: 12,
+    starTime: 105,
     rule: '每次消除后，各列棋子向下补位'
   },
   {
@@ -18,6 +20,7 @@ export const LEVELS = [
     name: '向上漂浮',
     movement: 'up',
     tileTypes: 14,
+    starTime: 90,
     rule: '每次消除后，各列棋子向上补位'
   },
   {
@@ -25,6 +28,7 @@ export const LEVELS = [
     name: '向左收拢',
     movement: 'left',
     tileTypes: 14,
+    starTime: 80,
     rule: '每次消除后，各行棋子向左补位'
   },
   {
@@ -32,6 +36,7 @@ export const LEVELS = [
     name: '向右收拢',
     movement: 'right',
     tileTypes: 16,
+    starTime: 70,
     rule: '每次消除后，各行棋子向右补位'
   },
   {
@@ -39,6 +44,7 @@ export const LEVELS = [
     name: '横向聚拢',
     movement: 'horizontal-in',
     tileTypes: 16,
+    starTime: 60,
     rule: '左右两侧的棋子向棋盘中央聚拢'
   },
   {
@@ -46,6 +52,7 @@ export const LEVELS = [
     name: '横向扩散',
     movement: 'horizontal-out',
     tileTypes: 18,
+    starTime: 50,
     rule: '左右两侧的棋子向棋盘边缘分开'
   },
   {
@@ -53,6 +60,7 @@ export const LEVELS = [
     name: '纵向聚拢',
     movement: 'vertical-in',
     tileTypes: 20,
+    starTime: 40,
     rule: '上下两侧的棋子向棋盘中央聚拢'
   },
   {
@@ -60,6 +68,7 @@ export const LEVELS = [
     name: '纵向扩散',
     movement: 'vertical-out',
     tileTypes: 20,
+    starTime: 30,
     rule: '上下两侧的棋子向棋盘边缘分开'
   },
   {
@@ -67,6 +76,7 @@ export const LEVELS = [
     name: '四向轮转',
     movement: 'rotate',
     tileTypes: 20,
+    starTime: 30,
     rule: '每次消除依次向下、向左、向上、向右移动'
   }
 ];
