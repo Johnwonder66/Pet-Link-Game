@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#edf6f5" />
+    <meta name="description" content="20只原创萌宠、十关渐进难度的经典连连看游戏。" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="绒光连连看" />
+    <title>绒光萌宠连连看</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="preload" href="./assets/mengchong-sprites-v1.png" as="image" fetchpriority="high" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar" aria-label="游戏状态">
+        <div class="brand" aria-label="绒光萌宠连连看">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <div>
+            <h1>绒光萌宠连连看</h1>
+            <p>让走散的萌宠重新产生心光共鸣</p>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-label">得分</span>
+            <strong id="score">0</strong>
+          </div>
+          <div class="stat">
+            <span class="stat-label">关卡</span>
+            <strong id="level">1 / 10</strong>
+          </div>
+          <div class="timer-stat">
+            <div class="timer-copy">
+              <span class="stat-label">剩余时间</span>
+              <strong id="timer">03:00</strong>
+            </div>
+            <div class="timer-track" aria-hidden="true">
+              <span id="timer-bar"></span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="game-layout">
+        <div class="board-wrap">
+          <div class="board-heading">
+            <div>
+              <h2>萌宠岛</h2>
+              <p id="status-text" aria-live="polite">选择两只相同萌宠开始共鸣</p>
+            </div>
+            <div class="remaining"><span id="remaining">80</span> 枚待消除</div>
+          </div>
+
+          <div class="level-mode-strip" aria-live="polite">
+            <div class="level-mode-copy">
+              <span>本关消除模式</span>
+              <strong id="level-mode">经典静止</strong>
+              <small id="level-rule">消除后，其余棋子保持原位</small>
+            </div>
+            <div id="level-progress" class="level-progress" aria-label="十关进度"></div>
+          </div>
+
+          <div id="board" class="board" role="grid" aria-label="连连看棋盘">
+            <svg id="path-layer" class="path-layer" aria-hidden="true"></svg>
+            <div id="pause-overlay" class="pause-overlay" hidden>
+              <div class="pause-card">
+                <span aria-hidden="true">Ⅱ</span>
+                <strong>游戏已暂停</strong>
+                <small>计时已经停止</small>
+                <button id="overlay-resume-button" type="button">继续游戏</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rule-note">
+            <span class="info-icon" aria-hidden="true">i</span>
+            <span>相同萌宠可通过不超过两次转弯的路径重逢</span>
+          </div>
+        </div>
+
+        <aside class="controls" aria-label="游戏操作">
+          <button id="hint-button" class="control-button" type="button">
+            <span class="control-icon coral" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M8.3 14.7A7 7 0 1 1 15.7 14.7c-.9.8-1.3 1.6-1.4 2.3h-4.6c-.1-.7-.5-1.5-1.4-2.3Z"/></svg>
+            </span>
+            <span><strong>提示</strong><small id="hint-count">追光萤 · 10 次</small></span>
+          </button>
+          <button id="shuffle-button" class="control-button" type="button">
+            <span class="control-icon mint" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20l5.5-5.5M21 3l-7 7M15 14l6 6M16 20h5v-5M4 4l5.5 5.5"/></svg>
+            </span>
+            <span><strong>洗牌</strong><small id="shuffle-count">岛风铃 · 10 次</small></span>
+          </button>
+          <button id="pause-button" class="control-button" type="button">
+            <span class="control-icon amber" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+            </span>
+            <span><strong id="pause-label">暂停</strong><small id="pause-help">停止本局计时</small></span>
+          </button>
+          <button id="restart-button" class="control-button" type="button">
+            <span class="control-icon blue" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 4v6h6M5.2 15A8 8 0 1 0 6 7.2L4 10"/></svg>
+            </span>
+            <span><strong>重开一局</strong><small>重新随机生成棋盘</small></span>
+          </button>
+
+          <section class="powerups" aria-labelledby="powerups-title">
+            <div class="powerups-heading">
+              <h2 id="powerups-title">奇趣道具</h2>
+              <span>每局限量</span>
+            </div>
+            <div class="powerup-list">
+              <button id="magic-button" class="powerup-button magic" type="button" aria-pressed="false">
+                <span class="powerup-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="m4 20 9-9M14 3l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3ZM19 13l.7 2.3L22 16l-2.3.7L19 19l-.7-2.3L16 16l2.3-.7L19 13Z"/></svg>
+                </span>
+                <span><strong>心光结</strong><small>任选一只，直接重逢</small></span>
+                <b id="magic-count">2</b>
+              </button>
+              <button id="time-button" class="powerup-button time" type="button">
+                <span class="powerup-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 4 1.3 6 4 9-2.7 3-4 5-4 9M16 3c0 4-1.3 6-4 9 2.7 3 4 5 4 9"/></svg>
+                </span>
+                <span><strong>时砂露</strong><small>立即增加 15 秒</small></span>
+                <b id="time-count">10</b>
+              </button>
+              <button id="bomb-button" class="powerup-button bomb" type="button">
+                <span class="powerup-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M14 6c3-3 4-2 5-5M16 4l3 3M13 7a7 7 0 1 1-4-3 7 7 0 0 1 4 3Z"/></svg>
+                </span>
+                <span><strong>绒星烟花</strong><small>一次送回 3 对</small></span>
+                <b id="bomb-count">3</b>
+              </button>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <div id="game-dialog" class="dialog-backdrop" hidden>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <div id="dialog-icon" class="dialog-icon">✦</div>
+        <h2 id="dialog-title">萌宠都重逢啦！</h2>
+        <p id="dialog-message">干得漂亮，你完成了这一关。</p>
+        <div class="dialog-score">本局得分 <strong id="dialog-score">0</strong></div>
+        <div class="dialog-actions">
+          <button id="dialog-secondary" class="button secondary" type="button">重新开始</button>
+          <button id="dialog-primary" class="button primary" type="button">下一关</button>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

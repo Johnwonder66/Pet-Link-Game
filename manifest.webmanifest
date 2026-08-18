@@ -1,0 +1,28 @@
+{
+  "id": "./",
+  "name": "绒光萌宠连连看",
+  "short_name": "绒光连连看",
+  "description": "20只原创萌宠、十关渐进难度的经典连连看。",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#edf6f5",
+  "theme_color": "#edf6f5",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
