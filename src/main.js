@@ -350,7 +350,8 @@ function handleTileClick(tile) {
       locked = false;
       if (result.won) showEndDialog(true);
       else {
-        if (result.autoShuffled) showToast('暂时无解，已为你自动重排');
+        if (result.geometryRecovered) showToast('岩障造成死局，已为你重新整理棋盘');
+        else if (result.autoShuffled) showToast('暂时无解，已为你自动重排');
         if (shouldEcho) window.setTimeout(performComboEcho, 80);
       }
     }, 340);
@@ -429,8 +430,10 @@ elements.shuffleButton.addEventListener('click', () => {
   clearPath();
   resetCombo();
   render();
-  elements.status.textContent = '岛风铃响起，萌宠位置已重新排列';
-  showToast('洗牌完成');
+  elements.status.textContent = engine.lastShuffleGeometryRecovered
+    ? '岛风铃重新整理了岩障间的萌宠，棋盘已恢复可消除'
+    : '岛风铃响起，萌宠位置已重新排列';
+  showToast(engine.lastShuffleGeometryRecovered ? '已解除岩障死局' : '洗牌完成');
 });
 
 elements.restartButton.addEventListener('click', () => restart(engine.level));
@@ -684,6 +687,7 @@ function finishPowerup(result, boardClass) {
   showMovementCue(result.movement);
   locked = false;
   if (result.won) showEndDialog(true);
+  else if (result.geometryRecovered) showToast('道具触发了岩障死局恢复');
   else if (result.autoShuffled) showToast('道具使用后已自动整理棋盘');
 }
 
@@ -765,6 +769,7 @@ function performComboEcho() {
     showMovementCue(result.movement);
     locked = false;
     if (result.won) showEndDialog(true);
+    else if (result.geometryRecovered) showToast('心光回响触发了岩障死局恢复');
     else if (result.autoShuffled) showToast('心光回响后已自动整理棋盘');
   }, 380);
 }

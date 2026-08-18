@@ -1,6 +1,6 @@
 export const ROWS = 8;
 export const COLS = 10;
-export const GAME_VERSION = '3.1.0';
+export const GAME_VERSION = '3.2.0';
 export const START_TIME = 180;
 export const MAX_HINTS = 10;
 export const MAX_SHUFFLES = 10;

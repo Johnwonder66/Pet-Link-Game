@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'huajian-link-game';
-const CACHE_NAME = `${CACHE_PREFIX}-v3.1.0`;
+const CACHE_NAME = `${CACHE_PREFIX}-v3.2.0`;
 const APP_SHELL = [
   './',
   './index.html',

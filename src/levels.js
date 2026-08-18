@@ -55,7 +55,7 @@ export const LEVELS = TUTORIAL_RULES.map(([name, rule], index) => ({
   rewardActive: false,
   iceCount: 0,
   stoneCount: 0,
-  isReward: false,
+  isReward: index === 9,
   isBoss: false,
   endless: false
 }));
@@ -100,7 +100,7 @@ export function getLevelConfig(level) {
     : getIslandNumber(storySeed);
   const islandLevel = ((storySeed - 1) % LEVELS_PER_ISLAND) + 1;
   const isBoss = !endless && islandLevel === LEVELS_PER_ISLAND;
-  const isReward = !isBoss && islandLevel === 10;
+  const isReward = !endless && !isBoss && islandLevel === 10;
   const islandTheme = getIslandDefinition(island);
   const intendedMovement = MOVEMENTS[(storySeed - 1) % MOVEMENTS.length];
   const obstacles = obstaclePlan(storySeed, isBoss, isReward);

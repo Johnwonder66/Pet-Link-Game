@@ -32,6 +32,7 @@ export class GameEngine {
     this.hintsLeft = MAX_HINTS;
     this.shufflesLeft = MAX_SHUFFLES;
     this.shufflesUsed = 0;
+    this.lastShuffleGeometryRecovered = false;
     this.timerFrozenTicks = 0;
     this.captainPairsCleared = 0;
     this.powerups = { magic: 2, time: MAX_TIME_BOOSTS, bomb: MAX_BOMBS };
@@ -120,6 +121,7 @@ export class GameEngine {
       ...common,
       won: false,
       autoShuffled: settled.autoShuffled,
+      geometryRecovered: settled.geometryRecovered,
       movement: settled.movement
     };
   }
@@ -141,7 +143,10 @@ export class GameEngine {
 
   shuffle() {
     if (this.state !== 'playing' || this.shufflesLeft <= 0) return false;
-    this.board = reshuffleBoard(this.board, this.random).board;
+    const shuffled = reshuffleBoard(this.board, this.random);
+    this.board = shuffled.board;
+    this.lastShuffleGeometryRecovered = shuffled.geometryRecovered;
+    if (shuffled.geometryRecovered) this.realignIceToBoard();
     this.assignShinyPairs(this.shinyPairsRemaining);
     this.selected = null;
     this.shufflesLeft -= 1;
@@ -184,6 +189,7 @@ export class GameEngine {
       to: partner,
       won,
       autoShuffled: settled.autoShuffled,
+      geometryRecovered: settled.geometryRecovered,
       movement: settled.movement,
       timeAdded,
       shiny,
@@ -238,6 +244,7 @@ export class GameEngine {
       matches,
       won,
       autoShuffled: settled.autoShuffled,
+      geometryRecovered: settled.geometryRecovered,
       movement: settled.movement,
       timeAdded,
       shinyMatches,
@@ -309,6 +316,19 @@ export class GameEngine {
 
   createIceBoard() {
     return this.board.map((row) => row.map((tile) => tile == null || tile === BLOCKED_TILE ? null : 0));
+  }
+
+  realignIceToBoard() {
+    const layers = this.iceBoard.flat().filter((value) => value > 0);
+    this.iceBoard = this.createIceBoard();
+    if (!layers.length) return;
+    const positions = [];
+    this.board.forEach((row, rowIndex) => row.forEach((tile, colIndex) => {
+      if (tile != null && tile !== BLOCKED_TILE) positions.push({ row: rowIndex, col: colIndex });
+    }));
+    shuffleArray(positions, this.random).slice(0, layers.length).forEach((position, index) => {
+      this.iceBoard[position.row][position.col] = layers[index];
+    });
   }
 
   assignIce(count) {
@@ -384,8 +404,13 @@ export class GameEngine {
     this.movementStep += 1;
     const solvable = ensureSolvable(this.board, this.random);
     this.board = solvable.board;
+    if (solvable.geometryRecovered) this.realignIceToBoard();
     if (solvable.reshuffled || this.shinyNeedsRefresh) this.assignShinyPairs(this.shinyPairsRemaining);
-    return { movement, autoShuffled: solvable.reshuffled };
+    return {
+      movement,
+      autoShuffled: solvable.reshuffled,
+      geometryRecovered: solvable.geometryRecovered
+    };
   }
 
   finishIfEmpty() {
@@ -446,6 +471,7 @@ export class GameEngine {
       hintsLeft: this.hintsLeft,
       shufflesLeft: this.shufflesLeft,
       shufflesUsed: this.shufflesUsed,
+      lastShuffleGeometryRecovered: this.lastShuffleGeometryRecovered,
       timerFrozenTicks: this.timerFrozenTicks,
       shinyPairsRemaining: this.shinyPairsRemaining,
       captainPairsCleared: this.captainPairsCleared,
