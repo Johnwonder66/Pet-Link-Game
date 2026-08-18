@@ -2,6 +2,9 @@ export const STORY_LEVELS = 1000;
 export const ENDLESS_START_LEVEL = STORY_LEVELS + 1;
 export const MAX_LEVELS = STORY_LEVELS;
 export const LEVELS_PER_ISLAND = 20;
+import { ISLANDS, ISLAND_NAMES, getIslandDefinition } from './islands.js';
+
+export { ISLANDS, ISLAND_NAMES, getIslandDefinition };
 
 export const MOVEMENT_LABELS = {
   static: '保持原位',
@@ -14,11 +17,6 @@ export const MOVEMENT_LABELS = {
   'vertical-in': '纵向聚拢',
   'vertical-out': '纵向扩散'
 };
-
-export const ISLAND_NAMES = [
-  '晨露岛', '云芽岛', '月绒岛', '花冠岛', '潮铃岛',
-  '星灯岛', '风筝岛', '极光岛', '晶角岛', '梦云岛'
-];
 
 const MOVEMENTS = [
   'static', 'down', 'up', 'left', 'right',
@@ -48,8 +46,13 @@ export const LEVELS = TUTORIAL_RULES.map(([name, rule], index) => ({
   rule,
   island: 1,
   islandLevel: index + 1,
-  islandName: ISLAND_NAMES[0],
-  captainType: 0,
+  islandName: ISLANDS[0].name,
+  islandTheme: ISLANDS[0],
+  captainType: ISLANDS[0].captainType,
+  captainTitle: ISLANDS[0].captainTitle,
+  captainSkill: ISLANDS[0].captainSkill,
+  islandReward: ISLANDS[0].reward,
+  rewardActive: false,
   iceCount: 0,
   stoneCount: 0,
   isReward: false,
@@ -76,9 +79,7 @@ export function getIslandNumber(level) {
 }
 
 export function getIslandName(island) {
-  const cycle = ISLAND_NAMES[(Math.max(1, island) - 1) % ISLAND_NAMES.length];
-  const voyage = Math.floor((Math.max(1, island) - 1) / ISLAND_NAMES.length) + 1;
-  return voyage === 1 ? cycle : `${cycle}·第${voyage}航程`;
+  return getIslandDefinition(island).name;
 }
 
 export function getIslandLevels(level) {
@@ -100,10 +101,11 @@ export function getLevelConfig(level) {
   const islandLevel = ((storySeed - 1) % LEVELS_PER_ISLAND) + 1;
   const isBoss = !endless && islandLevel === LEVELS_PER_ISLAND;
   const isReward = !isBoss && islandLevel === 10;
+  const islandTheme = getIslandDefinition(island);
   const intendedMovement = MOVEMENTS[(storySeed - 1) % MOVEMENTS.length];
   const obstacles = obstaclePlan(storySeed, isBoss, isReward);
   const movement = obstacles.stoneCount > 0 ? 'static' : intendedMovement;
-  const captainType = (island - 1) % 20;
+  const captainType = islandTheme.captainType;
   const name = isBoss
     ? '萌宠队长试炼'
     : isReward
@@ -131,8 +133,13 @@ export function getLevelConfig(level) {
     rule,
     island,
     islandLevel,
-    islandName: endless ? '无尽星海' : getIslandName(island),
+    islandName: endless ? '无尽星海' : islandTheme.name,
+    islandTheme,
     captainType,
+    captainTitle: islandTheme.captainTitle,
+    captainSkill: islandTheme.captainSkill,
+    islandReward: islandTheme.reward,
+    rewardActive: !endless && islandLevel > 10,
     iceCount: obstacles.iceCount,
     stoneCount: obstacles.stoneCount,
     isReward,

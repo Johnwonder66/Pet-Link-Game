@@ -5,8 +5,8 @@ import {
   LEVELS_PER_ISLAND,
   MOVEMENT_LABELS,
   STORY_LEVELS,
+  getIslandDefinition,
   getIslandLevels,
-  getIslandName,
   getIslandNumber,
   getLevelConfig
 } from './levels.js';
@@ -19,6 +19,7 @@ const engine = new GameEngine();
 engine.reset(progressStore.snapshot().currentLevel);
 const elements = {
   board: document.querySelector('#board'),
+  boardTitle: document.querySelector('#board-title'),
   pathLayer: document.querySelector('#path-layer'),
   score: document.querySelector('#score'),
   level: document.querySelector('#level'),
@@ -68,6 +69,9 @@ const elements = {
   mapNext: document.querySelector('#map-next'),
   mapCaptainAvatar: document.querySelector('#map-captain-avatar'),
   mapCaptainName: document.querySelector('#map-captain-name'),
+  mapThemeName: document.querySelector('#map-theme-name'),
+  mapRewardName: document.querySelector('#map-reward-name'),
+  mapRewardDescription: document.querySelector('#map-reward-description'),
   mapLevels: document.querySelector('#map-levels'),
   endlessButton: document.querySelector('#endless-button'),
   endlessStatus: document.querySelector('#endless-status'),
@@ -91,29 +95,44 @@ let activePowerup = null;
 let collectionResumeOnClose = false;
 let mapResumeOnClose = false;
 let visibleMapIsland = getIslandNumber(Math.min(engine.level, STORY_LEVELS));
+let appliedThemeIsland = 0;
+let renderedLevel = 0;
+const compactEffects = window.matchMedia('(max-width: 680px), (prefers-reduced-motion: reduce)').matches;
 
 function renderBoard() {
   const snapshot = engine.snapshot();
   progressStore.discover(snapshot.board.flat().filter((type) => type != null && type !== BLOCKED_TILE));
   renderCollectionSummary();
-  elements.board.querySelectorAll('.tile').forEach((tile) => tile.remove());
+  const activeCells = new Set();
   snapshot.board.forEach((row, rowIndex) => row.forEach((type, colIndex) => {
     if (type == null) return;
+    const cellKey = `${rowIndex}-${colIndex}`;
+    activeCells.add(cellKey);
+    let tile = elements.board.querySelector(`.tile[data-cell="${cellKey}"]`);
     if (type === BLOCKED_TILE) {
-      const stone = document.createElement('div');
-      stone.className = 'tile obstacle-stone';
-      stone.dataset.row = rowIndex;
-      stone.dataset.col = colIndex;
-      placeTileInGrid(stone, rowIndex, colIndex);
-      stone.setAttribute('role', 'gridcell');
-      stone.setAttribute('aria-label', `岩障，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
-      stone.innerHTML = '<span aria-hidden="true">◆</span>';
-      elements.board.append(stone);
+      if (!tile || tile.tagName !== 'DIV') {
+        tile?.remove();
+        tile = document.createElement('div');
+        tile.innerHTML = '<span aria-hidden="true">◆</span>';
+        elements.board.append(tile);
+      }
+      tile.className = 'tile obstacle-stone';
+      tile.dataset.cell = cellKey;
+      tile.dataset.row = rowIndex;
+      tile.dataset.col = colIndex;
+      placeTileInGrid(tile, rowIndex, colIndex);
+      tile.setAttribute('role', 'gridcell');
+      tile.setAttribute('aria-label', `岩障，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
       return;
     }
-    const tile = document.createElement('button');
-    tile.type = 'button';
+    if (!tile || tile.tagName !== 'BUTTON') {
+      tile?.remove();
+      tile = document.createElement('button');
+      tile.type = 'button';
+      elements.board.append(tile);
+    }
     tile.className = 'tile';
+    tile.dataset.cell = cellKey;
     tile.dataset.row = rowIndex;
     tile.dataset.col = colIndex;
     tile.style.setProperty('--row', rowIndex);
@@ -134,24 +153,31 @@ function renderBoard() {
     tile.setAttribute('role', 'gridcell');
     tile.setAttribute('aria-label', `${frozen ? '霜晶覆盖的' : ''}${shiny ? '闪光' : ''}${captain ? '队长' : ''}${TILE_NAMES[type]}，第 ${rowIndex + 1} 行第 ${colIndex + 1} 列`);
     if (frozen) {
-      const ice = document.createElement('span');
-      ice.className = 'ice-layer';
-      ice.setAttribute('aria-hidden', 'true');
-      ice.textContent = '❄';
-      tile.append(ice);
+      let ice = tile.querySelector('.ice-layer');
+      if (!ice) {
+        ice = document.createElement('span');
+        ice.className = 'ice-layer';
+        ice.setAttribute('aria-hidden', 'true');
+        ice.textContent = '❄';
+        tile.append(ice);
+      }
+    } else {
+      tile.querySelector('.ice-layer')?.remove();
     }
     if (snapshot.selected?.row === rowIndex && snapshot.selected?.col === colIndex) {
       tile.classList.add('selected');
       tile.setAttribute('aria-selected', 'true');
     }
-    tile.addEventListener('click', handleTileClick);
-    elements.board.append(tile);
   }));
+  elements.board.querySelectorAll('.tile[data-cell]').forEach((tile) => {
+    if (!activeCells.has(tile.dataset.cell)) tile.remove();
+  });
 }
 
 function renderStats() {
   const snapshot = engine.snapshot();
   const progress = progressStore.snapshot();
+  applyIslandTheme(snapshot.levelConfig);
   elements.gameVersion.textContent = `v${GAME_VERSION}`;
   elements.score.textContent = snapshot.score.toLocaleString('zh-CN');
   elements.level.textContent = snapshot.levelConfig.endless
@@ -161,8 +187,11 @@ function renderStats() {
   elements.levelRule.textContent = snapshot.levelConfig.movement === 'rotate'
     ? `${snapshot.activeTileTypes}种萌宠 · ${snapshot.levelConfig.rule} · 下一次：${snapshot.nextMovementLabel}`
     : `${snapshot.activeTileTypes}种萌宠 · ${snapshot.levelConfig.rule}`;
-  renderLevelProgress(snapshot.level);
-  renderCaptain(snapshot);
+  if (renderedLevel !== snapshot.level) {
+    renderLevelProgress(snapshot.level);
+    renderCaptain(snapshot);
+    renderedLevel = snapshot.level;
+  }
   renderMissions(snapshot);
   elements.mapProgress.textContent = snapshot.levelConfig.endless
     ? `∞${snapshot.level - STORY_LEVELS}`
@@ -219,8 +248,30 @@ function renderCaptain(snapshot) {
   const type = snapshot.levelConfig.captainType;
   elements.captainAvatar.style.setProperty('--sprite-x', type % 5);
   elements.captainAvatar.style.setProperty('--sprite-y', Math.floor(type / 5));
-  elements.captainName.textContent = `${TILE_NAMES[type]} · +2秒`;
-  elements.captainCard.title = `消除${TILE_NAMES[type]}时，队长额外增加2秒`;
+  elements.captainName.textContent = `${TILE_NAMES[type]} · ${snapshot.levelConfig.captainSkill.name}`;
+  elements.captainCard.title = `${snapshot.levelConfig.captainTitle}·${TILE_NAMES[type]}：${snapshot.levelConfig.captainSkill.description}`;
+}
+
+function applyIslandTheme(levelConfig) {
+  if (appliedThemeIsland === levelConfig.island && !levelConfig.endless) return;
+  const island = levelConfig.islandTheme;
+  const palette = island.palette;
+  const root = document.documentElement;
+  root.style.setProperty('--page', palette.page);
+  root.style.setProperty('--surface', palette.surface);
+  root.style.setProperty('--board', palette.board);
+  root.style.setProperty('--board-line', palette.boardLine);
+  root.style.setProperty('--ink', palette.ink);
+  root.style.setProperty('--muted', palette.muted);
+  root.style.setProperty('--coral', palette.accent);
+  root.style.setProperty('--coral-dark', palette.accentDark);
+  root.style.setProperty('--mint', palette.mint);
+  root.style.setProperty('--theme-glow', palette.glow);
+  root.style.setProperty('--captain-hue', island.captainHue);
+  document.body.dataset.islandTheme = palette.key;
+  elements.boardTitle.textContent = levelConfig.endless ? '无尽星海' : island.name;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette.page);
+  appliedThemeIsland = levelConfig.endless ? -1 : levelConfig.island;
 }
 
 function renderMissions(snapshot) {
@@ -244,9 +295,8 @@ function render() {
   renderStats();
 }
 
-function handleTileClick(event) {
+function handleTileClick(tile) {
   if (locked) return;
-  const tile = event.currentTarget;
   const position = { row: Number(tile.dataset.row), col: Number(tile.dataset.col) };
   if (activePowerup === 'magic') {
     useMagicPowerup(position);
@@ -288,7 +338,7 @@ function handleTileClick(event) {
       ? `${comboCount} 连击！时间 +${result.timeAdded} 秒${movementText ? ` · 萌宠${movementText}` : ''}`
       : `共鸣成功，时间 +${result.timeAdded} 秒${movementText ? ` · ${movementText}` : ''}`;
     if (result.shiny) status += ' · 闪光双倍得分';
-    if (result.captainAssist) status += ' · 队长援助额外+2秒';
+    if (result.captainAssist) status += ` · ${result.captainSkill.name}：${result.captainSkill.description}`;
     if (comboReward.message) status += ` · ${comboReward.message}`;
     elements.status.textContent = status;
     renderStats();
@@ -347,6 +397,12 @@ function clearPath() {
   elements.pathLayer.classList.remove('visible');
   elements.pathLayer.innerHTML = '';
 }
+
+elements.board.addEventListener('click', (event) => {
+  const tile = event.target.closest('button.tile');
+  if (!tile || !elements.board.contains(tile)) return;
+  handleTileClick(tile);
+});
 
 elements.hintButton.addEventListener('click', () => {
   const move = engine.hint();
@@ -475,12 +531,26 @@ function renderMap() {
   const progress = progressStore.snapshot();
   const start = (visibleMapIsland - 1) * LEVELS_PER_ISLAND + 1;
   const end = Math.min(STORY_LEVELS, start + LEVELS_PER_ISLAND - 1);
-  const captainType = (visibleMapIsland - 1) % PET_PROFILES.length;
-  elements.mapTitle.textContent = getIslandName(visibleMapIsland);
+  const island = getIslandDefinition(visibleMapIsland);
+  const captainType = island.captainType;
+  elements.mapDialog.dataset.theme = island.palette.key;
+  elements.mapDialog.style.setProperty('--map-page', island.palette.page);
+  elements.mapDialog.style.setProperty('--map-board', island.palette.board);
+  elements.mapDialog.style.setProperty('--map-line', island.palette.boardLine);
+  elements.mapDialog.style.setProperty('--map-ink', island.palette.ink);
+  elements.mapDialog.style.setProperty('--map-muted', island.palette.muted);
+  elements.mapDialog.style.setProperty('--map-accent', island.palette.accent);
+  elements.mapDialog.style.setProperty('--map-mint', island.palette.mint);
+  elements.mapTitle.textContent = island.name;
   elements.mapSummary.textContent = `第 ${start}—${end} 关 · 已解锁第 ${progress.unlockedLevel} 关`;
   elements.mapCaptainAvatar.style.setProperty('--sprite-x', captainType % 5);
   elements.mapCaptainAvatar.style.setProperty('--sprite-y', Math.floor(captainType / 5));
-  elements.mapCaptainName.textContent = TILE_NAMES[captainType];
+  elements.mapCaptainAvatar.style.setProperty('--captain-hue', island.captainHue);
+  elements.mapCaptainName.textContent = `${island.captainTitle}·${TILE_NAMES[captainType]}`;
+  elements.mapCaptainName.title = `${island.captainSkill.name}：${island.captainSkill.description}`;
+  elements.mapThemeName.textContent = island.themeName;
+  elements.mapRewardName.textContent = island.reward.name;
+  elements.mapRewardDescription.textContent = `第10关完成后：${island.reward.description}`;
   elements.mapPrevious.disabled = visibleMapIsland === 1;
   elements.mapNext.disabled = visibleMapIsland >= Math.ceil(STORY_LEVELS / LEVELS_PER_ISLAND);
   elements.mapLevels.replaceChildren(...Array.from({ length: end - start + 1 }, (_, index) => {
@@ -717,8 +787,9 @@ function triggerMatchEffects(result, scoreDelta, combo) {
 
 function createSparkBurst(center, offset) {
   const colors = ['#f4715d', '#f8bf4f', '#60b79c', '#ffffff'];
-  for (let index = 0; index < 10; index += 1) {
-    const angle = (Math.PI * 2 * index / 10) + offset * 0.18;
+  const sparkCount = compactEffects ? 6 : 10;
+  for (let index = 0; index < sparkCount; index += 1) {
+    const angle = (Math.PI * 2 * index / sparkCount) + offset * 0.18;
     const distance = 32 + (index % 3) * 9;
     const spark = document.createElement('span');
     spark.className = 'match-spark';
@@ -755,7 +826,8 @@ function createPetalRain() {
   const rain = document.createElement('div');
   rain.className = 'petal-rain';
   rain.setAttribute('aria-hidden', 'true');
-  for (let index = 0; index < 24; index += 1) {
+  const petalCount = compactEffects ? 12 : 24;
+  for (let index = 0; index < petalCount; index += 1) {
     const petal = document.createElement('i');
     petal.style.setProperty('--petal-left', `${3 + Math.random() * 94}%`);
     petal.style.setProperty('--petal-delay', `${Math.random() * 0.45}s`);
@@ -770,6 +842,7 @@ function createPetalRain() {
 function showEndDialog(won) {
   const completedStory = won && engine.level === STORY_LEVELS;
   const endless = engine.levelConfig.endless;
+  const rewardUnlocked = won && engine.levelConfig.isReward;
   const nextLevel = won ? getLevelConfig(engine.level + 1) : null;
   const stars = won ? engine.starsEarned : 0;
   if (won) progressStore.recordCompletion(engine.level, stars);
@@ -782,7 +855,7 @@ function showEndDialog(won) {
   elements.dialogStars.hidden = !won;
   renderCollectionSummary();
   renderLevelProgress(engine.level);
-  elements.dialogIcon.textContent = won ? (completedStory ? '🏆' : engine.levelConfig.isBoss ? '★' : '✿') : '⌛';
+  elements.dialogIcon.textContent = won ? (completedStory ? '🏆' : rewardUnlocked ? '✦' : engine.levelConfig.isBoss ? '★' : '✿') : '⌛';
   elements.dialogTitle.textContent = completedStory
     ? '千关远航完成！'
     : won
@@ -790,6 +863,8 @@ function showEndDialog(won) {
       : '时间到';
   elements.dialogMessage.textContent = completedStory
     ? `你完成了1000关岛屿旅程，无尽星海已经解锁！本关获得 ${stars}/3 星。`
+    : rewardUnlocked
+      ? `获得“${engine.levelConfig.islandReward.name}”！${engine.levelConfig.islandReward.description}。下一关开始生效。`
     : won
       ? `${endless ? '继续驶向无尽星海。' : `本关获得 ${stars}/3 星。`}下一关：${nextLevel.name}。${nextLevel.rule}`
       : '差一点就成功了，再试一次吧。每关都会从03:00重新开始。';

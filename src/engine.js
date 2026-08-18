@@ -1,6 +1,5 @@
 import {
   BLOCKED_TILE,
-  CAPTAIN_TIME_BONUS,
   MATCH_TIME_BONUS,
   MAX_BOMBS,
   MAX_HINTS,
@@ -36,6 +35,7 @@ export class GameEngine {
     this.timerFrozenTicks = 0;
     this.captainPairsCleared = 0;
     this.powerups = { magic: 2, time: MAX_TIME_BOOSTS, bomb: MAX_BOMBS };
+    this.applyIslandReward();
     this.selected = null;
     this.state = 'playing';
     this.activeTileTypes = this.tileTypes ?? this.levelConfig.tileTypes;
@@ -101,13 +101,14 @@ export class GameEngine {
     else if (shinyTouched > 0) this.shinyNeedsRefresh = true;
     this.selected = null;
     const captainAssist = pairType === this.levelConfig.captainType;
-    const timeAdded = this.addMatchTime(1) + (captainAssist ? this.grantTime(CAPTAIN_TIME_BONUS) : 0);
+    const captainSkill = captainAssist ? this.applyCaptainSkill() : null;
+    const timeAdded = this.addMatchTime(1) + (captainSkill?.timeAdded ?? 0);
     const timeBonus = Math.min(8, Math.ceil(this.timeLeft / 45));
     const baseScore = 100 + timeBonus * 5;
-    const scoreAdded = baseScore * (shiny ? 2 : 1) + (captainAssist ? 80 : 0);
+    const scoreAdded = baseScore * (shiny ? 2 : 1) + (captainSkill?.scoreAdded ?? 0);
     this.score += scoreAdded;
     if (captainAssist) this.captainPairsCleared += 1;
-    const common = { type: 'match', source, from, to, path, shiny, captainAssist, scoreAdded, timeAdded };
+    const common = { type: 'match', source, from, to, path, shiny, captainAssist, captainSkill, scoreAdded, timeAdded };
     if (this.remaining === 0) {
       this.state = 'won';
       this.score += this.timeLeft * 10;
@@ -261,6 +262,45 @@ export class GameEngine {
     if (this.state !== 'playing') return false;
     this.timerFrozenTicks = Math.max(this.timerFrozenTicks, seconds);
     return true;
+  }
+
+  applyCaptainSkill() {
+    const skill = this.levelConfig.captainSkill;
+    const result = {
+      name: skill.name,
+      description: skill.description,
+      kind: skill.kind,
+      timeAdded: 0,
+      scoreAdded: 80,
+      hintsAdded: 0,
+      shufflesAdded: 0,
+      frozenTicks: 0
+    };
+    if (skill.kind === 'time') result.timeAdded = this.grantTime(skill.value);
+    if (skill.kind === 'score') result.scoreAdded += skill.value;
+    if (skill.kind === 'freeze') {
+      this.freezeTimer(skill.value);
+      result.frozenTicks = skill.value;
+    }
+    if (skill.kind === 'hint') {
+      this.hintsLeft += skill.value;
+      result.hintsAdded = skill.value;
+    }
+    if (skill.kind === 'shuffle') {
+      this.shufflesLeft += skill.value;
+      result.shufflesAdded = skill.value;
+    }
+    return result;
+  }
+
+  applyIslandReward() {
+    if (!this.levelConfig.rewardActive) return;
+    const reward = this.levelConfig.islandReward;
+    if (reward.kind === 'hint') this.hintsLeft += reward.value;
+    if (reward.kind === 'shuffle') this.shufflesLeft += reward.value;
+    if (reward.kind === 'magic') this.powerups.magic += reward.value;
+    if (reward.kind === 'time') this.powerups.time += reward.value;
+    if (reward.kind === 'bomb') this.powerups.bomb += reward.value;
   }
 
   createShinyBoard() {

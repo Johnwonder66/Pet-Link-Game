@@ -1,11 +1,11 @@
 const CACHE_PREFIX = 'huajian-link-game';
-const CACHE_NAME = `${CACHE_PREFIX}-v6`;
+const CACHE_NAME = `${CACHE_PREFIX}-v3.1.0`;
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
   './manifest.webmanifest',
-  './assets/mengchong-sprites-v1.png',
+  './assets/mengchong-sprites-v1-lite.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
@@ -13,6 +13,7 @@ const APP_SHELL = [
   './src/board.js',
   './src/constants.js',
   './src/engine.js',
+  './src/islands.js',
   './src/levels.js',
   './src/main.js',
   './src/pathfinding.js',
@@ -27,8 +28,12 @@ function scopeUrl(path) {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL.map(scopeUrl)))
+    caches.open(CACHE_NAME).then((cache) => Promise.all(APP_SHELL.map(async (path) => {
+      const url = scopeUrl(path);
+      const response = await fetch(new Request(url, { cache: 'reload' }));
+      if (!response.ok) throw new Error(`无法预缓存 ${path}`);
+      await cache.put(url, response);
+    })))
       .then(() => self.skipWaiting())
   );
 });

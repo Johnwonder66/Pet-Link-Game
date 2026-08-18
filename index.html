@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#edf6f5" />
-    <meta name="description" content="20只原创萌宠、1000关岛屿闯关与无尽模式的经典连连看游戏。" />
+    <meta name="description" content="50座主题萌宠岛、1000关闯关与无尽模式的经典连连看游戏。" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="绒光连连看" />
@@ -12,7 +12,7 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/icon-192.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <link rel="preload" href="./assets/mengchong-sprites-v1.png" as="image" fetchpriority="high" />
+    <link rel="preload" href="./assets/mengchong-sprites-v1-lite.png" as="image" type="image/png" fetchpriority="high" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -23,7 +23,7 @@
           <div>
             <div class="brand-title-row">
               <h1>绒光萌宠连连看</h1>
-              <small id="game-version" class="game-version">v3.0.0</small>
+              <small id="game-version" class="game-version">v3.1.0</small>
             </div>
             <p>让走散的萌宠重新产生心光共鸣</p>
           </div>
@@ -54,7 +54,7 @@
         <div class="board-wrap">
           <div class="board-heading">
             <div>
-              <h2>萌宠岛</h2>
+              <h2 id="board-title">晨露岛</h2>
               <p id="status-text" aria-live="polite">选择两只相同萌宠开始共鸣</p>
             </div>
             <div class="remaining"><span id="remaining">80</span> 枚待消除</div>
@@ -203,6 +203,17 @@
             <span><small>守护队长</small><strong id="map-captain-name">焰耳狐</strong></span>
           </div>
           <button id="map-next" type="button" aria-label="下一座岛">›</button>
+        </div>
+        <div class="island-feature-bar">
+          <div>
+            <small>岛屿主题</small>
+            <strong id="map-theme-name">露珠花园</strong>
+          </div>
+          <div>
+            <small>奖励技能</small>
+            <strong id="map-reward-name">露珠花园祝福</strong>
+            <span id="map-reward-description">第10关完成后生效</span>
+          </div>
         </div>
         <div id="map-levels" class="island-levels" aria-label="本岛关卡"></div>
         <button id="endless-button" class="endless-button" type="button" disabled>
